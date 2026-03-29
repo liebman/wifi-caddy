@@ -1,0 +1,10 @@
+# 4 MB flash: single factory app (no OTA). Fits common 4 MB modules; increase app
+# region if you target 8 MB+ and need a larger firmware.
+#
+# Name,     Type,   SubType,    Offset,  Size, Flags
+# bootloader.bin,,,             0x1000, 32K
+# partition table,,,            0x8000, 4K
+nvs,        data,   nvs,        0x9000, 0x6000,
+phy_init,   data,   phy,        ,       0x1000,
+config,     data,   undefined,  ,       0x50000,
+factory,    app,    factory,    ,       0x3A0000,

@@ -1,0 +1,44 @@
+[alias]
+# esp32s3
+clippy-s3 = "clippy --release --target=xtensa-esp32s3-none-elf --features esp32s3"
+build-s3 = "build --release --target=xtensa-esp32s3-none-elf --features esp32s3"
+run-s3   = "run   --release --target=xtensa-esp32s3-none-elf --features esp32s3"
+
+# esp32
+clippy-32 = "clippy --release --target=xtensa-esp32-none-elf --features esp32"
+build-32 = "build --release --target=xtensa-esp32-none-elf --features esp32"
+run-32   = "run --release --target=xtensa-esp32-none-elf --features esp32"
+
+# esp32c6
+clippy-c6 = "clippy --release --target=riscv32imac-unknown-none-elf --features esp32c6"
+build-c6 = "build --release --target=riscv32imac-unknown-none-elf --features esp32c6"
+run-c6   = "run --release --target=riscv32imac-unknown-none-elf --features esp32c6"
+
+[target.xtensa-esp32-none-elf]
+runner = "espflash flash --chip esp32 --monitor"
+rustflags = [
+  "-C", "link-arg=-nostartfiles",
+  "-C", "link-arg=-Tlinkall.x",
+]
+
+[target.xtensa-esp32s3-none-elf]
+runner = "espflash flash --chip esp32s3 --monitor"
+rustflags = [
+  "-C", "link-arg=-nostartfiles",
+  "-C", "link-arg=-Tlinkall.x",
+]
+
+[target.riscv32imac-unknown-none-elf]
+runner = "espflash flash --chip esp32c6 --monitor"
+rustflags = [
+  "-C", "link-arg=-nostartfiles",
+  "-C", "link-arg=-Tlinkall.x",
+]
+
+[unstable]
+build-std = ["alloc", "core"]
+
+[env]
+ESP_LOG = "esp_wifi_caddy=debug,wifi_caddy::portal=debug,edge_captive=debug,info"
+# ESP_LOG = "info"
+DEFMT_LOG = "info"

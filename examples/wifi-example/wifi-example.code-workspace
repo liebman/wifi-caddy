@@ -1,0 +1,24 @@
+{
+	"folders": [
+		{
+			"path": "./", "name": "wifi-example",
+		},
+		// {
+		// 	"path": "../../esp-wifi-caddy"
+		// },
+		// {
+		// 	"path": "../../wifi-caddy-proc"
+		// }
+	],
+	"settings": {
+		"editor.formatOnSave": true,
+		"rust-analyzer.cargo.allTargets": false,
+		"rust-analyzer.cargo.targetDir": "target/rust-analyzer",
+		"rust-analyzer.cargo.features": [
+			"log",
+			"esp32s3",
+		],
+		"rust-analyzer.cargo.target": "xtensa-esp32s3-none-elf",
+		"rust-analyzer.checkOnSave": true,
+	}
+}
