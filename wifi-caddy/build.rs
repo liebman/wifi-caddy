@@ -8,7 +8,6 @@ fn main() {
     let tcp_buf_size = env_or("WIFI_CADDY_TCP_BUF_SIZE", "2048");
     let http_buf_size = env_or("WIFI_CADDY_HTTP_BUF_SIZE", "4096");
     let keepalive_ms = env_or("WIFI_CADDY_KEEPALIVE_TIMEOUT_MS", "3000");
-    let request_ms = env_or("WIFI_CADDY_REQUEST_TIMEOUT_MS", "2000");
 
     let out = std::path::Path::new(&std::env::var("OUT_DIR").unwrap()).join("server_tuning.rs");
 
@@ -26,10 +25,6 @@ fn main() {
              /// TCP keep-alive timeout in milliseconds.\n\
              /// Override with env var `WIFI_CADDY_KEEPALIVE_TIMEOUT_MS` (default 3000).\n\
              const KEEPALIVE_TIMEOUT_MS: u32 = {keepalive_ms};\n\
-             \n\
-             /// HTTP request timeout in milliseconds.\n\
-             /// Override with env var `WIFI_CADDY_REQUEST_TIMEOUT_MS` (default 2000).\n\
-             const REQUEST_TIMEOUT_MS: u32 = {request_ms};\n\
              \n\
              /// Number of concurrent HTTP handler tasks inside `Server::run`.\n\
              /// With `debug-server`, the debug server gets its own separate task.\n\
