@@ -35,7 +35,10 @@ pub async fn serve_loop<H: Handler>(stack: Stack<'static>, handler: H) {
     debug!("serve_loop: HANDLER_TASKS = {}", HANDLER_TASKS);
     debug!("serve_loop: TCP_BUF_SIZE = {}", TCP_BUF_SIZE);
     debug!("serve_loop: HTTP_BUF_SIZE = {}", HTTP_BUF_SIZE);
-    debug!("serve_loop: KEEPALIVE_TIMEOUT_MS = {}", KEEPALIVE_TIMEOUT_MS);
+    debug!(
+        "serve_loop: KEEPALIVE_TIMEOUT_MS = {}",
+        KEEPALIVE_TIMEOUT_MS
+    );
     let tcp_buffers = TcpBuffers::<{ HANDLER_TASKS }, { TCP_BUF_SIZE }, { TCP_BUF_SIZE }>::new();
     let tcp = Tcp::new(stack, &tcp_buffers);
 

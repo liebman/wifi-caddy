@@ -31,10 +31,7 @@ pub async fn run_inner<C, F>(
     ui: ConfigUiOptions,
     on_updated: Option<&'static (dyn Fn(C::ChangedSet) + Send)>,
     spawn_workers: F,
-) -> Result<
-    (WifiStacks, WifiCommandSender, ConfigHandle<C>),
-    wifi_caddy::config_storage::ConfigError,
->
+) -> Result<(WifiStacks, WifiCommandSender, ConfigHandle<C>), wifi_caddy::config_storage::ConfigError>
 where
     C: ConfigFormGen + ConfigGet + ConfigApi + ConfigLoadStore + Send + 'static,
     C::ChangedSet: Send,
@@ -73,11 +70,7 @@ where
         );
     });
 
-    Ok((
-        wifi_stacks,
-        wifi_sender,
-        ConfigHandle::new(config_mutex),
-    ))
+    Ok((wifi_stacks, wifi_sender, ConfigHandle::new(config_mutex)))
 }
 
 #[doc(hidden)]
@@ -107,10 +100,7 @@ pub async fn run_inner_by_partition<C, F>(
     ui: ConfigUiOptions,
     on_updated: Option<&'static (dyn Fn(C::ChangedSet) + Send)>,
     spawn_workers: F,
-) -> Result<
-    (WifiStacks, WifiCommandSender, ConfigHandle<C>),
-    wifi_caddy::config_storage::ConfigError,
->
+) -> Result<(WifiStacks, WifiCommandSender, ConfigHandle<C>), wifi_caddy::config_storage::ConfigError>
 where
     C: ConfigFormGen + ConfigGet + ConfigApi + ConfigLoadStore + Send + 'static,
     C::ChangedSet: Send,
