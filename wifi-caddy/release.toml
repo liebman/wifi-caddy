@@ -1,4 +1,4 @@
-allow-branch = ["master"]
+allow-branch = ["main"]
 pre-release-replacements = [
   {file="CHANGELOG.md", search="Unreleased", replace="{{version}}"},
   {file="CHANGELOG.md", search="\\.\\.\\.HEAD", replace="...{{tag_name}}", exactly=1},

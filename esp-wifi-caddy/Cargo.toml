@@ -48,7 +48,7 @@ targets = ["riscv32imac-unknown-none-elf"]
 cargo-args = ["-Z", "build-std=core"]
 
 [dependencies]
-wifi-caddy = { path = "../wifi-caddy" }
+wifi-caddy = { version = "0.1.0", path = "../wifi-caddy" }
 
 embassy-executor = { version = "0.9.1" }
 embassy-time = { version = "0.5.0" }
