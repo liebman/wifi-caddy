@@ -45,7 +45,7 @@ esp32c6 = [
 [package.metadata.docs.rs]
 features = ["esp32c6", "esp-hal-unstable"]
 targets = ["riscv32imac-unknown-none-elf"]
-cargo-args = ["-Z", "build-std=core"]
+cargo-args = ["-Z", "build-std=alloc,core"]
 
 [dependencies]
 wifi-caddy = { version = "0.1.0", path = "../wifi-caddy" }

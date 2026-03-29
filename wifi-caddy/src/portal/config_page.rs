@@ -94,7 +94,7 @@ pub struct PageTab {
     pub name: &'static str,
     /// HTML form body segments.
     pub html_segments: &'static [&'static str],
-    /// JS segments (loadConfig_<page>, saveConfig_<page>).
+    /// JS segments (`loadConfig_<page>`, `saveConfig_<page>`).
     pub js_segments: &'static [&'static str],
 }
 
