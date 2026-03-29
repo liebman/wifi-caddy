@@ -42,13 +42,13 @@ mod run;
 
 // Re-export platform-agnostic types from wifi-caddy for backward compatibility
 #[cfg(feature = "config")]
-pub use wifi_caddy::config_storage;
-#[cfg(feature = "config")]
 pub use wifi_caddy::ConfigHandle;
 #[cfg(feature = "config")]
 pub use wifi_caddy::ConfigStorageParams;
 #[cfg(feature = "config")]
 pub use wifi_caddy::ConfigUiOptions;
+#[cfg(feature = "config")]
+pub use wifi_caddy::config_storage;
 #[cfg(feature = "config")]
 pub use wifi_caddy::run_http_config_loop;
 #[cfg(all(feature = "config", feature = "debug-server"))]
@@ -490,10 +490,9 @@ macro_rules! __wifi_init_debug_worker {
             ui: $crate::ConfigUiOptions,
             on_updated: Option<
                 &'static (
-                    dyn Fn(
-                        <$Config as $crate::config_storage::ConfigApi>::ChangedSet,
-                    ) + Send
-                ),
+                             dyn Fn(<$Config as $crate::config_storage::ConfigApi>::ChangedSet)
+                                 + Send
+                         ),
             >,
         ) {
             $crate::run_http_debug_loop::<$Config, $crate::FlashConfigStorage<'static>>(
@@ -504,7 +503,11 @@ macro_rules! __wifi_init_debug_worker {
 
         $spawner
             .spawn(__config_http_worker_debug(
-                $sta_stack, $config, $io, $ui, $on_updated,
+                $sta_stack,
+                $config,
+                $io,
+                $ui,
+                $on_updated,
             ))
             .unwrap();
     };
@@ -540,10 +543,9 @@ macro_rules! __wifi_init_workers {
             ui: $crate::ConfigUiOptions,
             on_updated: Option<
                 &'static (
-                    dyn Fn(
-                        <$Config as $crate::config_storage::ConfigApi>::ChangedSet,
-                    ) + Send
-                ),
+                             dyn Fn(<$Config as $crate::config_storage::ConfigApi>::ChangedSet)
+                                 + Send
+                         ),
             >,
         ) {
             $crate::run_http_config_loop::<$Config, $crate::FlashConfigStorage<'static>>(
@@ -567,18 +569,14 @@ macro_rules! __wifi_init_workers {
             ui: $crate::ConfigUiOptions,
             on_updated: Option<
                 &'static (
-                    dyn Fn(
-                        <$Config as $crate::config_storage::ConfigApi>::ChangedSet,
-                    ) + Send
-                ),
+                             dyn Fn(<$Config as $crate::config_storage::ConfigApi>::ChangedSet)
+                                 + Send
+                         ),
             >,
         ) {
             s.spawn(__config_http_worker(ap_stack, config, io, ui, on_updated))
                 .unwrap();
-            $crate::__wifi_init_debug_worker!(
-                $Config, s, _sta_stack, config, io, ui, on_updated
-            );
+            $crate::__wifi_init_debug_worker!($Config, s, _sta_stack, config, io, ui, on_updated);
         }
     };
 }
-

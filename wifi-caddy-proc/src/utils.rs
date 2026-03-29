@@ -111,7 +111,13 @@ pub fn escape_js_str(s: &str) -> String {
 pub fn page_name_to_suffix(page: &str) -> String {
     let raw: String = page
         .chars()
-        .map(|c| if c.is_ascii_alphanumeric() || c == '_' { c.to_ascii_uppercase() } else { '_' })
+        .map(|c| {
+            if c.is_ascii_alphanumeric() || c == '_' {
+                c.to_ascii_uppercase()
+            } else {
+                '_'
+            }
+        })
         .collect();
     let mut result = String::with_capacity(raw.len());
     let mut prev_underscore = false;
@@ -134,7 +140,13 @@ pub fn page_name_to_suffix(page: &str) -> String {
 /// Replaces any character that is not alphanumeric or `_` with `_`.
 pub fn page_name_to_js_id(page: &str) -> String {
     page.chars()
-        .map(|c| if c.is_alphanumeric() || c == '_' { c } else { '_' })
+        .map(|c| {
+            if c.is_alphanumeric() || c == '_' {
+                c
+            } else {
+                '_'
+            }
+        })
         .collect()
 }
 

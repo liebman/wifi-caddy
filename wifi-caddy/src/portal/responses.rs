@@ -17,7 +17,10 @@ where
     conn.initiate_response(
         200,
         None,
-        &[("Content-Type", "application/json"), ("Connection", "close")],
+        &[
+            ("Content-Type", "application/json"),
+            ("Connection", "close"),
+        ],
     )
     .await?;
     conn.write_all(json.as_bytes()).await?;

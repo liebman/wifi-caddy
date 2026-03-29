@@ -12,8 +12,8 @@ use esp_storage::FlashStorage;
 use sequential_storage::cache::NoCache;
 use sequential_storage::map::MapConfig;
 use sequential_storage::map::MapStorage;
-use wifi_caddy::config_storage::{ConfigError, ConfigStorage};
 use wifi_caddy::ConfigStorageParams;
+use wifi_caddy::config_storage::{ConfigError, ConfigStorage};
 
 // FNV-1a 64-bit constants (must match wifi-caddy-proc/src/utils.rs)
 const FNV_OFFSET: u64 = 0xcbf29ce484222325;

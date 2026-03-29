@@ -33,7 +33,10 @@ where
         send_redirect(conn, AP_URL).await?;
         Ok(true)
     } else {
-        debug!("captive: host={:?}, serving normally", crate::fmt::DebugFmt(&host));
+        debug!(
+            "captive: host={:?}, serving normally",
+            crate::fmt::DebugFmt(&host)
+        );
         Ok(false)
     }
 }

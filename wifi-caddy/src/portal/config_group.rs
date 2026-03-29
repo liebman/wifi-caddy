@@ -53,7 +53,8 @@ where
             Err(e) => {
                 error!(
                     "handle_config_group: set_group_json failed for group {}: {}",
-                    group, crate::fmt::DisplayFmt(&e)
+                    group,
+                    crate::fmt::DisplayFmt(&e)
                 );
                 return ConfigGroupResult::Err(400, alloc::format!("{}", e));
             }
@@ -63,7 +64,8 @@ where
             if let Err(e) = config_guard.store_to(&mut *io_guard).await {
                 error!(
                     "handle_config_group: store_to failed for group {}: {}",
-                    group, crate::fmt::DisplayFmt(&e)
+                    group,
+                    crate::fmt::DisplayFmt(&e)
                 );
                 return ConfigGroupResult::Err(500, alloc::format!("{}", e));
             }

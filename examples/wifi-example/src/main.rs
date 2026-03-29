@@ -173,11 +173,7 @@ async fn main(spawner: Spawner) {
         }
     }
     spawner
-        .spawn(config_updated_task(
-            config_rx,
-            config,
-            wifi_sender,
-        ))
+        .spawn(config_updated_task(config_rx, config, wifi_sender))
         .ok();
     info!("wifi config task spawned (awaits config updates)");
 
