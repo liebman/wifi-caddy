@@ -1,0 +1,96 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+concurrency:
+  cancel-in-progress: true
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  check-lib:
+    name: Check library crates
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install RISC-V toolchain
+        uses: dtolnay/rust-toolchain@v1
+        with:
+          target: riscv32imac-unknown-none-elf
+          toolchain: stable
+          components: rust-src
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          prefix-key: ci-check-lib
+          cache-all-crates: true
+
+      - name: Check wifi-caddy
+        run: cargo check --target riscv32imac-unknown-none-elf
+        working-directory: wifi-caddy
+
+      - name: Check wifi-caddy-proc
+        run: cargo check
+        working-directory: wifi-caddy-proc
+
+      - name: Check esp-wifi-caddy
+        run: cargo check --target riscv32imac-unknown-none-elf --features esp32c6
+        working-directory: esp-wifi-caddy
+
+  build-example:
+    name: Build Example (${{ matrix.target }}, ${{ matrix.features }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        target: [esp32, esp32s3, esp32c6]
+        features: [log, defmt]
+        include:
+          - target: esp32
+            rust_target: xtensa-esp32-none-elf
+            toolchain: +esp
+            cargo_unstable: "-Zbuild-std=core,alloc"
+            rustflags: "-D warnings -C link-arg=-nostartfiles -C link-arg=-Tlinkall.x"
+          - target: esp32s3
+            rust_target: xtensa-esp32s3-none-elf
+            toolchain: +esp
+            cargo_unstable: "-Zbuild-std=core,alloc"
+            rustflags: "-D warnings -C link-arg=-nostartfiles -C link-arg=-Tlinkall.x"
+          - target: esp32c6
+            rust_target: riscv32imac-unknown-none-elf
+            toolchain: ""
+            cargo_unstable: ""
+            rustflags: "-D warnings -C link-arg=-Tlinkall.x"
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Xtensa toolchain
+        uses: esp-rs/xtensa-toolchain@v1.6
+        with:
+          version: 1.93.0.0
+
+      - name: Install RISC-V toolchain
+        uses: dtolnay/rust-toolchain@v1
+        with:
+          target: riscv32imac-unknown-none-elf
+          toolchain: stable
+          components: rust-src
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          prefix-key: "ci-${{ matrix.target }}"
+          cache-all-crates: true
+
+      - name: Build wifi-example
+        working-directory: examples/wifi-example
+        env:
+          RUSTFLAGS: ${{ matrix.rustflags }}
+        run: |
+          cargo ${{ matrix.toolchain }} build --release --target ${{ matrix.rust_target }} --no-default-features --features "${{ matrix.target }},${{ matrix.features }}" ${{ matrix.cargo_unstable }}
