@@ -4,6 +4,15 @@ Minimal example: connect to WiFi using **esp-wifi-caddy** and
 **wifi-caddy-proc** with flash-backed config persistence. Demonstrates the
 config UI, config change notifications, and boot-button AP toggle.
 
+This repo uses **path** dependencies to the sibling crates. In your own project,
+use crates.io versions instead, for example:
+
+```toml
+wifi-caddy        = "0.1.0"
+wifi-caddy-proc   = "0.1.0"
+esp-wifi-caddy    = "0.1.0"
+```
+
 ## Features
 
 - **esp32s3** (default with `cargo build-s3`): Build for ESP32-S3.

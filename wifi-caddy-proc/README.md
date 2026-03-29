@@ -8,6 +8,15 @@ Platform-specific initialization (e.g. `esp_wifi_caddy::wifi_init!`) is handled 
 
 For architecture overview, boot flow, and prerequisites, see the [wifi-caddy README](../wifi-caddy/README.md).
 
+From [crates.io](https://crates.io/crates/wifi-caddy-proc), pin the trio together:
+
+```toml
+[dependencies]
+wifi-caddy        = "0.1.0"
+wifi-caddy-proc   = "0.1.0"
+esp-wifi-caddy    = "0.1.0"
+```
+
 ## Usage
 
 One derive plus struct-level attributes:

@@ -74,11 +74,12 @@ directly:
 
 ```toml
 [dependencies]
-wifi-caddy-proc = { path = "..." }        # or git
-esp-wifi-caddy  = { path = "..." }        # or git
-serde           = { version = "1.0", default-features = false, features = ["derive", "alloc"] }
-serde-json-core = "0.6"
-esp-storage     = "0.8.1"
+wifi-caddy        = "0.1.0"
+wifi-caddy-proc   = "0.1.0"
+esp-wifi-caddy    = "0.1.0"
+serde             = { version = "1.0", default-features = false, features = ["derive", "alloc"] }
+serde-json-core   = "0.6"
+esp-storage       = "0.8.1"
 ```
 
 See [wifi-example/Cargo.toml](../examples/wifi-example/Cargo.toml) for a

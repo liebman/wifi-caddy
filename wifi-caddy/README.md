@@ -21,10 +21,10 @@ WiFi initialization.
 
 ```toml
 [dependencies]
-wifi-caddy = "0.1"
-wifi-caddy-proc = "0.1"
+wifi-caddy        = "0.1.0"
+wifi-caddy-proc   = "0.1.0"
 # Platform-specific:
-esp-wifi-caddy = "0.1"
+esp-wifi-caddy    = "0.1.0"
 ```
 
 ## Features

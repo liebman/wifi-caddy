@@ -114,11 +114,12 @@ DNS on the AP stack.
 
    ```toml
    [dependencies]
-   wifi-caddy-proc = { path = "..." }   # or git
-   esp-wifi-caddy  = { path = "..." }   # or git
-   serde           = { version = "1", default-features = false, features = ["derive", "alloc"] }
-   serde-json-core = "0.6"
-   esp-storage     = "0.8"
+   wifi-caddy        = "0.1.0"
+   wifi-caddy-proc   = "0.1.0"
+   esp-wifi-caddy    = "0.1.0"
+   serde             = { version = "1", default-features = false, features = ["derive", "alloc"] }
+   serde-json-core   = "0.6"
+   esp-storage       = "0.8"
    ```
 
 4. **Define your config struct** with `#[derive(WifiCaddyConfig)]` and the
