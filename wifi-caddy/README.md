@@ -48,8 +48,7 @@ sensible defaults.
 | `WIFI_CADDY_HANDLER_TASKS`       | `usize` | `4`     | Concurrent HTTP handler tasks                  |
 | `WIFI_CADDY_TCP_BUF_SIZE`        | `usize` | `2048`  | Per-connection TCP receive/send buffer (bytes)  |
 | `WIFI_CADDY_HTTP_BUF_SIZE`       | `usize` | `4096`  | HTTP request/response buffer (bytes)            |
-| `WIFI_CADDY_KEEPALIVE_TIMEOUT_MS`| `u32`   | `30000` | TCP keep-alive timeout (ms)                    |
-| `WIFI_CADDY_REQUEST_TIMEOUT_MS`  | `u32`   | `30000` | HTTP request timeout (ms)                      |
+| `WIFI_CADDY_KEEPALIVE_TIMEOUT_MS`| `u32`   | `3000`  | TCP keep-alive timeout (ms)                    |
 
 Set them in the shell:
 
