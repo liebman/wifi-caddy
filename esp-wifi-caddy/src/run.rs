@@ -16,7 +16,7 @@ use embassy_sync::mutex::Mutex;
 use esp_hal::peripherals::WIFI;
 use esp_storage::FlashStorage;
 use wifi_caddy::config_storage::{ConfigApi, ConfigFormGen, ConfigGet, ConfigLoadStore};
-use wifi_caddy::{ConfigHandle, ConfigStorageParams, ConfigUiOptions};
+use wifi_caddy::{ConfigHandle, ConfigStorageParams};
 
 use crate::flash_config::FlashConfigStorage;
 use crate::{WifiCommandSender, WifiStacks, init};
@@ -28,7 +28,6 @@ pub async fn run_inner<C, F>(
     flash: FlashStorage<'static>,
     partition_range: Range<u32>,
     params: ConfigStorageParams,
-    ui: ConfigUiOptions,
     on_updated: Option<&'static (dyn Fn(C::ChangedSet) + Send)>,
     spawn_workers: F,
 ) -> Result<(WifiStacks, WifiCommandSender, ConfigHandle<C>), wifi_caddy::config_storage::ConfigError>
@@ -41,7 +40,6 @@ where
         Stack<'static>,
         &'static Mutex<CriticalSectionRawMutex, C>,
         &'static Mutex<CriticalSectionRawMutex, FlashConfigStorage<'static>>,
-        ConfigUiOptions,
         Option<&'static (dyn Fn(C::ChangedSet) + Send)>,
     ),
 {
@@ -65,7 +63,6 @@ where
             sta_stack,
             config_mutex,
             io_mutex,
-            ui,
             on_updated,
         );
     });
@@ -97,7 +94,6 @@ pub async fn run_inner_by_partition<C, F>(
     mut flash: FlashStorage<'static>,
     partition_name: &str,
     params: ConfigStorageParams,
-    ui: ConfigUiOptions,
     on_updated: Option<&'static (dyn Fn(C::ChangedSet) + Send)>,
     spawn_workers: F,
 ) -> Result<(WifiStacks, WifiCommandSender, ConfigHandle<C>), wifi_caddy::config_storage::ConfigError>
@@ -110,7 +106,6 @@ where
         Stack<'static>,
         &'static Mutex<CriticalSectionRawMutex, C>,
         &'static Mutex<CriticalSectionRawMutex, FlashConfigStorage<'static>>,
-        ConfigUiOptions,
         Option<&'static (dyn Fn(C::ChangedSet) + Send)>,
     ),
 {
@@ -121,7 +116,6 @@ where
         flash,
         partition_range,
         params,
-        ui,
         on_updated,
         spawn_workers,
     )

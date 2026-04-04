@@ -10,8 +10,8 @@ and platform-specific runtime crates like `esp-wifi-caddy`:
   `ConfigGet`, `ConfigApi`, `ConfigFormGen`) for key-value config persistence.
 - **HTTP config portal** (feature `portal`) with DHCP, optional captive-portal DNS,
   and a config UI server built on `edge-http` and `embassy-net`.
-- **Helper types** (`ConfigStorageParams`, `ConfigUiOptions`, `ConfigHandle`) used
-  by the derive macro and platform init macros.
+- **Helper types** (`ConfigStorageParams`, `ConfigHandle`) used by the derive
+  macro and platform init macros.
 
 ## Usage
 

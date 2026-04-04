@@ -104,37 +104,6 @@ pub fn escape_js_str(s: &str) -> String {
     out
 }
 
-/// Convert page name to a valid Rust const suffix (e.g. "basic" -> "BASIC", "Home Assistant" -> "HOME_ASSISTANT").
-///
-/// Replaces any character that is not alphanumeric or `_` with `_`, then collapses
-/// consecutive underscores into one.
-pub fn page_name_to_suffix(page: &str) -> String {
-    let raw: String = page
-        .chars()
-        .map(|c| {
-            if c.is_ascii_alphanumeric() || c == '_' {
-                c.to_ascii_uppercase()
-            } else {
-                '_'
-            }
-        })
-        .collect();
-    let mut result = String::with_capacity(raw.len());
-    let mut prev_underscore = false;
-    for c in raw.chars() {
-        if c == '_' {
-            if !prev_underscore {
-                result.push('_');
-            }
-            prev_underscore = true;
-        } else {
-            result.push(c);
-            prev_underscore = false;
-        }
-    }
-    result
-}
-
 /// Convert page name to a valid JS identifier suffix (e.g. "Network" -> "Network", "my-page" -> "my_page").
 ///
 /// Replaces any character that is not alphanumeric or `_` with `_`.
@@ -202,15 +171,6 @@ mod tests {
         assert_eq!(escape_js_str(r#" \ ""#), " \\\\ \\\"");
         assert_eq!(escape_js_str("a\nb"), r#"a\nb"#);
         assert_eq!(escape_js_str("a\rb"), r#"a\rb"#);
-    }
-
-    #[test]
-    fn test_page_name_to_suffix() {
-        assert_eq!(page_name_to_suffix("basic"), "BASIC");
-        assert_eq!(page_name_to_suffix("my-page"), "MY_PAGE");
-        assert_eq!(page_name_to_suffix("Home Assistant"), "HOME_ASSISTANT");
-        assert_eq!(page_name_to_suffix("a--b"), "A_B");
-        assert_eq!(page_name_to_suffix("PrusaLink"), "PRUSALINK");
     }
 
     #[test]

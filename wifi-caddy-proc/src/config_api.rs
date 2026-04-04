@@ -32,16 +32,6 @@ struct StructAttrs {
     notify_channel: bool,
     /// `cap = N` from `#[config_notify]`.
     notify_cap: Option<usize>,
-    /// UI string overrides from `#[config_ui(...)]`.
-    ui_page_heading: Option<String>,
-    ui_title: Option<String>,
-    ui_subtitle: Option<String>,
-    ui_nav_left: Option<String>,
-    ui_nav_right: Option<String>,
-    /// `extra_css = "..."` from `#[config_ui]`; custom CSS appended after built-in stylesheet.
-    ui_extra_css: Option<String>,
-    /// `default_group = "..."` from `#[config_ui]`; which tab to show first.
-    ui_default_group: Option<String>,
 }
 
 // ---------------------------------------------------------------------------
@@ -54,13 +44,6 @@ fn parse_struct_attrs(attrs: &[syn::Attribute]) -> StructAttrs {
     let mut storage_version: Option<u32> = None;
     let mut notify_channel = false;
     let mut notify_cap: Option<usize> = None;
-    let mut ui_page_heading: Option<String> = None;
-    let mut ui_title: Option<String> = None;
-    let mut ui_subtitle: Option<String> = None;
-    let mut ui_nav_left: Option<String> = None;
-    let mut ui_nav_right: Option<String> = None;
-    let mut ui_extra_css: Option<String> = None;
-    let mut ui_default_group: Option<String> = None;
 
     for attr in attrs {
         if attr.path().is_ident("config_server") {
@@ -87,27 +70,6 @@ fn parse_struct_attrs(attrs: &[syn::Attribute]) -> StructAttrs {
                     Ok(())
                 });
             }
-        } else if attr.path().is_ident("config_ui") {
-            let _ = attr.parse_nested_meta(|meta| {
-                if meta.path.is_ident("page_heading") {
-                    ui_page_heading = try_parse_lit_str(&meta);
-                } else if meta.path.is_ident("title") {
-                    ui_title = try_parse_lit_str(&meta);
-                } else if meta.path.is_ident("subtitle") {
-                    ui_subtitle = try_parse_lit_str(&meta);
-                } else if meta.path.is_ident("nav_left") {
-                    ui_nav_left = try_parse_lit_str(&meta);
-                } else if meta.path.is_ident("nav_right") {
-                    ui_nav_right = try_parse_lit_str(&meta);
-                } else if meta.path.is_ident("extra_css") {
-                    ui_extra_css = try_parse_lit_str(&meta);
-                } else if meta.path.is_ident("default_group") {
-                    ui_default_group = try_parse_lit_str(&meta);
-                } else {
-                    consume_meta_value(&meta);
-                }
-                Ok(())
-            });
         }
     }
 
@@ -117,13 +79,6 @@ fn parse_struct_attrs(attrs: &[syn::Attribute]) -> StructAttrs {
         storage_version,
         notify_channel,
         notify_cap,
-        ui_page_heading,
-        ui_title,
-        ui_subtitle,
-        ui_nav_left,
-        ui_nav_right,
-        ui_extra_css,
-        ui_default_group,
     }
 }
 
@@ -453,7 +408,7 @@ fn gen_notify_channel(attrs: &StructAttrs, num_pages: usize) -> TokenStream {
 }
 
 // ---------------------------------------------------------------------------
-// Phase 7 – storage_params / ui_options as associated fns (always emitted)
+// Phase 7 – storage_params as associated fn (emitted when #[config_server] is present)
 // ---------------------------------------------------------------------------
 
 fn gen_config_statics(attrs: &StructAttrs) -> TokenStream {
@@ -466,45 +421,12 @@ fn gen_config_statics(attrs: &StructAttrs) -> TokenStream {
     let storage_magic_lit = proc_macro2::Literal::u32_unsuffixed(storage_magic_val);
     let storage_version_lit = proc_macro2::Literal::u32_unsuffixed(storage_version_val);
 
-    let ui_default_group_val = attrs.ui_default_group.as_deref().unwrap_or("main");
-    let ui_page_heading_val = attrs.ui_page_heading.as_deref().unwrap_or("Configuration");
-    let ui_title_val = attrs.ui_title.as_deref().unwrap_or("Configuration");
-    let ui_subtitle_val = attrs.ui_subtitle.as_deref().unwrap_or("");
-    let ui_nav_left_val = attrs
-        .ui_nav_left
-        .as_deref()
-        .unwrap_or("<span>Configuration</span>");
-    let ui_nav_right_val = attrs.ui_nav_right.as_deref().unwrap_or("<span></span>");
-    let ui_extra_css_val = attrs.ui_extra_css.as_deref().unwrap_or("");
-
-    let ui_default_group_lit =
-        syn::LitStr::new(ui_default_group_val, proc_macro2::Span::call_site());
-    let ui_page_heading_lit = syn::LitStr::new(ui_page_heading_val, proc_macro2::Span::call_site());
-    let ui_title_lit = syn::LitStr::new(ui_title_val, proc_macro2::Span::call_site());
-    let ui_subtitle_lit = syn::LitStr::new(ui_subtitle_val, proc_macro2::Span::call_site());
-    let ui_nav_left_lit = syn::LitStr::new(ui_nav_left_val, proc_macro2::Span::call_site());
-    let ui_nav_right_lit = syn::LitStr::new(ui_nav_right_val, proc_macro2::Span::call_site());
-    let ui_extra_css_lit = syn::LitStr::new(ui_extra_css_val, proc_macro2::Span::call_site());
-
     quote! {
         #[doc(hidden)]
         pub fn __storage_params() -> wifi_caddy::ConfigStorageParams {
             wifi_caddy::ConfigStorageParams {
                 magic: #storage_magic_lit,
                 format_version: #storage_version_lit,
-            }
-        }
-
-        #[doc(hidden)]
-        pub fn __ui_options() -> wifi_caddy::ConfigUiOptions {
-            wifi_caddy::ConfigUiOptions {
-                default_group: #ui_default_group_lit,
-                page_heading: #ui_page_heading_lit,
-                title: #ui_title_lit,
-                subtitle: #ui_subtitle_lit,
-                nav_left: #ui_nav_left_lit,
-                nav_right: #ui_nav_right_lit,
-                extra_css: #ui_extra_css_lit,
             }
         }
     }
@@ -517,15 +439,14 @@ fn gen_config_statics(attrs: &StructAttrs) -> TokenStream {
 /// Builds the group API, optional notify channel, and config statics for `WifiCaddyConfig`.
 ///
 /// Struct-level attributes: `#[config_server(storage_magic, storage_version)]`,
-/// `#[config_notify(cap)]`, `#[config_ui(page_heading, title, subtitle, nav_left, nav_right)]`.
+/// `#[config_notify(cap)]`.
 /// Field-level: from `#[config_form]` we use `skip` and `input_type` (password → redacted in GET);
 /// from `#[config_store]`, `notify = "Wifi"` or `notify_group = "wifi"` add a `ConfigChange` variant.
 ///
 /// Emits: per-page DTOs (e.g. `MainConfig`) for JSON, `ConfigChange` enum, `ConfigApi` impl;
 /// if `#[config_notify]`, the channel types, `config_update_notify` (private), and
 /// `MyConfig::__init_config_update_channel()` (returns `ConfigUpdateReceiver`);
-/// if `#[config_server]`, `MyConfig::__storage_params()` and `MyConfig::__ui_options()`
-/// (referencing `wifi_caddy::*`).
+/// if `#[config_server]`, `MyConfig::__storage_params()` (referencing `wifi_caddy::*`).
 ///
 /// Always emits `MyConfig::__init_config_update_channel()` (returns `()` when notify is off).
 ///

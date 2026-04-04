@@ -68,7 +68,7 @@ in your `Cargo.toml` for the generated code to compile.
 
 | Crate | Used for |
 |-------|----------|
-| `wifi-caddy` | `ConfigStorageParams`, `ConfigUiOptions` types for statics |
+| `wifi-caddy` | `ConfigStorageParams` type for statics |
 
 See [wifi-example/Cargo.toml](../examples/wifi-example/Cargo.toml) for a
 complete working `[dependencies]` section.
@@ -76,6 +76,8 @@ complete working `[dependencies]` section.
 ## Field types
 
 Supported config field types: `String`, `u8`, `u16`, `u32`, `u64`, `i8`, `i16`, `i32`, `i64`, `f32`, `f64`.
+
+Custom types that implement `ConfigValue` are also supported — add `#[config_form(prim_type = "...")]` to map them to a known primitive for form generation, or use `#[config_form(input_type = "...")]` with optional `save_as` for full control. Type aliases like `type MyInt = u32` require `prim_type` since the macro cannot resolve aliases.
 
 ## Field and struct attributes
 
@@ -94,7 +96,9 @@ Use these on your config struct and its fields when deriving `WifiCaddyConfig`.
 - `page = "Name"` – assign this field to a tab. All fields with the same page appear on that tab. Omit for single-page (default `"main"`). Groups (fieldsets) cannot span pages.
 - `fieldset = "Legend Text"` – wrap in a `<fieldset>` with that legend.
 - `help = "..."` – help text.
-- `input_type = "password"` – for string fields; default `"text"`.
+- `input_type = "password"` – override the HTML input type; default is inferred from the field type (`"number"` for integers/floats, `"text"` for `String`).
+- `prim_type = "u32"` – tell the macro which known primitive this field maps to. Use for type aliases (`type MyInt = u32`) or newtypes (`struct Celsius(f32)`) so the macro can infer the correct input type, step attribute, and JS parse kind.
+- `save_as = "string|int|float"` – override the JS parse kind used in the form's save function. Defaults: `"int"` for `number`/`range` inputs, `"string"` for others. Use `"float"` for float-like custom types.
 - `min` / `max` – for numeric fields (integer, float, or string literal e.g. `min = "-100"`, `max = "3.14"`).
 - `label = "..."` – override default label.
 - `hidden` – include in form but render as hidden input.

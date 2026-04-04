@@ -7,27 +7,7 @@ use embassy_net::Stack;
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::mutex::Mutex;
 
-/// UI strings for the config page (provided by the proc-macro-generated `__ui_options()` method).
-#[doc(hidden)]
-#[derive(Clone, Copy, Debug)]
-pub struct ConfigUiOptions {
-    /// Default config group (e.g. `"basic"`).
-    pub default_group: &'static str,
-    /// Heading on the config page (e.g. `"WiFi Blink"`).
-    pub page_heading: &'static str,
-    /// Page title (e.g. `"WiFi Blink - Configuration"`).
-    pub title: &'static str,
-    /// Subtitle (e.g. `"WiFi and LED settings"`).
-    pub subtitle: &'static str,
-    /// Left nav HTML (e.g. `"<span>Configuration</span>"`).
-    pub nav_left: &'static str,
-    /// Right nav HTML (e.g. `"<span></span>"`).
-    pub nav_right: &'static str,
-    /// Extra CSS appended after the built-in stylesheet (e.g. overrides for colors or layout).
-    pub extra_css: &'static str,
-}
-
-/// Build a `ConfigHandler` from the shared config/io mutexes and UI options,
+/// Build a `ConfigHandler` from the shared config/io mutexes,
 /// then run the HTTP server on the given stack.
 ///
 /// Generic over the storage backend `S: ConfigStorage + Send`.
@@ -38,7 +18,6 @@ pub async fn run_http_config_loop<C, S>(
     stack: Stack<'static>,
     config: &'static Mutex<CriticalSectionRawMutex, C>,
     io: &'static Mutex<CriticalSectionRawMutex, S>,
-    ui: ConfigUiOptions,
     on_updated: Option<&'static (dyn Fn(C::ChangedSet) + Send)>,
 ) where
     C: ConfigFormGen + ConfigGet + ConfigApi + ConfigLoadStore + Send,
@@ -50,13 +29,6 @@ pub async fn run_http_config_loop<C, S>(
     let handler = ConfigHandler {
         config,
         io,
-        default_group: ui.default_group,
-        page_heading: ui.page_heading,
-        title: ui.title,
-        subtitle: ui.subtitle,
-        nav_left: ui.nav_left,
-        nav_right: ui.nav_right,
-        extra_css: ui.extra_css,
         on_updated,
         #[cfg(feature = "captive")]
         captive: true,
@@ -74,7 +46,6 @@ pub async fn run_http_debug_loop<C, S>(
     stack: Stack<'static>,
     config: &'static Mutex<CriticalSectionRawMutex, C>,
     io: &'static Mutex<CriticalSectionRawMutex, S>,
-    ui: ConfigUiOptions,
     on_updated: Option<&'static (dyn Fn(C::ChangedSet) + Send)>,
 ) where
     C: ConfigFormGen + ConfigGet + ConfigApi + ConfigLoadStore + Send,
@@ -96,13 +67,6 @@ pub async fn run_http_debug_loop<C, S>(
     let handler = ConfigHandler {
         config,
         io,
-        default_group: ui.default_group,
-        page_heading: ui.page_heading,
-        title: ui.title,
-        subtitle: ui.subtitle,
-        nav_left: ui.nav_left,
-        nav_right: ui.nav_right,
-        extra_css: ui.extra_css,
         on_updated,
         #[cfg(feature = "captive")]
         captive: false,

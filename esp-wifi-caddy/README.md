@@ -214,8 +214,7 @@ attributes (`#[config_store]`, `#[config_form]`, `#[config_server]`, `#[config_n
 | `ConfigHandle` | Shared config handle returned by `wifi_init!`; use `.config()` to get the mutex for tasks |
 | `ConfigError` | Error type from `init_wifi` (e.g. backend, invalid data) |
 | `config_storage::ConfigStorage` | Trait to implement an alternative storage backend |
-| `config_storage::ConfigValue` | Trait to implement for custom field types in your config struct |
-| `config_storage::JsSaveKind` | Enum used in `ConfigValue` impls (String, Int, Float) |
+| `config_storage::ConfigValue` | Trait to implement for custom field types in your config struct (serialization + getter) |
 | `config_storage::MAX_VALUE_SIZE` | Max bytes per stored value (used by `ConfigStorage` default impls) |
 
 ## Features

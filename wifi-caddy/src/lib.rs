@@ -18,7 +18,7 @@ mod run_http;
 #[cfg(all(feature = "portal", feature = "debug-server"))]
 pub use run_http::run_http_debug_loop;
 #[cfg(feature = "portal")]
-pub use run_http::{ConfigUiOptions, run_http_config_loop};
+pub use run_http::run_http_config_loop;
 
 /// Parameters for config storage mount/format. Only the values are configurable;
 /// key IDs are fixed to match wifi-caddy-proc.
