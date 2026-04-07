@@ -1,6 +1,4 @@
 //! Embassy + edge-http portal: AP DHCP, optional DNS, HTTP server loop.
-//!
-//! In-tree module when `config` feature is enabled.
 
 extern crate alloc;
 

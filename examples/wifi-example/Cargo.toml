@@ -80,10 +80,8 @@ wifi-caddy-proc = { path = "../../wifi-caddy-proc" }
 serde = { version = "1.0", default-features = false, features = ["derive", "alloc"] }
 serde-json-core = "0.6"
 
-# Flash config storage (also required by esp-wifi-caddy config feature)
 esp-storage = { version = "0.8.1" }
 
-# ESP32-S3 / esp-wifi-caddy (config + partition-table; captive via feature)
 esp-wifi-caddy = { path = "../../esp-wifi-caddy" }
 esp-hal = { version = "1.0.0", features = ["unstable"] }
 esp-alloc = { version = "0.9.0" }

@@ -6,7 +6,6 @@
 use alloc::boxed::Box;
 use core::ops::Range;
 
-#[cfg(feature = "partition-table")]
 use esp_bootloader_esp_idf::partitions;
 
 use embassy_executor::Spawner;
@@ -72,7 +71,6 @@ where
 }
 
 #[doc(hidden)]
-#[cfg(feature = "partition-table")]
 pub fn resolve_partition_range(
     flash: &mut FlashStorage<'static>,
     partition_name: &str,
@@ -88,7 +86,6 @@ pub fn resolve_partition_range(
 }
 
 #[doc(hidden)]
-#[cfg(feature = "partition-table")]
 pub async fn run_inner_by_partition<C, F>(
     spawner: Spawner,
     wifi: WIFI<'static>,

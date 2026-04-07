@@ -35,32 +35,22 @@ use esp_radio::wifi::WifiStaState;
 // fmt must be first: its macro_rules! macros (info!, warn!, etc.) are used by all other modules.
 mod fmt;
 
-#[cfg(feature = "config")]
 mod flash_config;
-#[cfg(feature = "config")]
 mod run;
 
 // Re-export platform-agnostic types from wifi-caddy for backward compatibility
-#[cfg(feature = "config")]
 pub use wifi_caddy::ConfigHandle;
-#[cfg(feature = "config")]
 pub use wifi_caddy::ConfigStorageParams;
-#[cfg(feature = "config")]
 pub use wifi_caddy::{ConfigServer, ConfigType};
-#[cfg(feature = "config")]
 pub use wifi_caddy::config_storage;
-#[cfg(feature = "config")]
 pub use wifi_caddy::run_http_config_loop;
-#[cfg(all(feature = "config", feature = "debug-server"))]
+#[cfg(feature = "debug-server")]
 pub use wifi_caddy::run_http_debug_loop;
 
-#[cfg(feature = "config")]
 #[doc(hidden)]
 pub use flash_config::FlashConfigStorage;
-#[cfg(feature = "config")]
 #[doc(hidden)]
 pub use run::run_inner;
-#[cfg(all(feature = "config", feature = "partition-table"))]
 #[doc(hidden)]
 pub use run::{resolve_partition_range, run_inner_by_partition};
 
@@ -399,15 +389,12 @@ async fn ap_task(mut runner: Runner<'static, WifiDevice<'static>>) {
 /// automatically and a config-update channel receiver is returned as the 4th
 /// tuple element.
 ///
-/// Requires the `partition-table` feature on `esp-wifi-caddy`.
-///
 /// # Usage
 ///
 /// ```ignore
 /// let (stacks, sender, handle, config_rx) =
 ///     esp_wifi_caddy::wifi_init!(AppConfig, spawner, peripherals.WIFI, flash, "config")?;
 /// ```
-#[cfg(all(feature = "config", feature = "partition-table"))]
 #[macro_export]
 macro_rules! wifi_init {
     ($Config:ty, $spawner:expr, $wifi:expr, $flash:expr, $partition:expr) => {{
@@ -442,7 +429,6 @@ macro_rules! wifi_init {
 ///     esp_wifi_caddy::wifi_init_raw!(AppConfig, spawner, peripherals.WIFI, flash,
 ///         0x10000..0x20000)?;
 /// ```
-#[cfg(feature = "config")]
 #[macro_export]
 macro_rules! wifi_init_raw {
     ($Config:ty, $spawner:expr, $wifi:expr, $flash:expr, $range:expr) => {{
@@ -467,7 +453,7 @@ macro_rules! wifi_init_raw {
 // in esp-wifi-caddy, not the user's crate).
 // ---------------------------------------------------------------------------
 
-#[cfg(all(feature = "config", feature = "debug-server"))]
+#[cfg(feature = "debug-server")]
 #[doc(hidden)]
 #[macro_export]
 macro_rules! __wifi_init_debug_worker {
@@ -507,7 +493,7 @@ macro_rules! __wifi_init_debug_worker {
     };
 }
 
-#[cfg(all(feature = "config", not(feature = "debug-server")))]
+#[cfg(not(feature = "debug-server"))]
 #[doc(hidden)]
 #[macro_export]
 macro_rules! __wifi_init_debug_worker {
@@ -518,7 +504,6 @@ macro_rules! __wifi_init_debug_worker {
 // Shared worker definitions: AP task + spawn function (calls debug worker macro).
 // ---------------------------------------------------------------------------
 
-#[cfg(feature = "config")]
 #[doc(hidden)]
 #[macro_export]
 macro_rules! __wifi_init_workers {

@@ -10,14 +10,11 @@ mod fmt;
 
 pub mod config_storage;
 
-#[cfg(feature = "portal")]
 pub mod portal;
-#[cfg(feature = "portal")]
 mod run_http;
 
-#[cfg(all(feature = "portal", feature = "debug-server"))]
+#[cfg(feature = "debug-server")]
 pub use run_http::run_http_debug_loop;
-#[cfg(feature = "portal")]
 pub use run_http::run_http_config_loop;
 
 #[doc(hidden)]

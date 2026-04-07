@@ -11,7 +11,7 @@ keywords = ["esp32", "wifi", "embassy", "embedded", "captive-portal"]
 categories = ["embedded", "no-std"]
 
 [features]
-default = ["config", "captive", "partition-table"]
+default = ["captive"]
 nightly = ["wifi-caddy/nightly"]
 defmt = [
     "dep:defmt",
@@ -21,15 +21,7 @@ defmt = [
     "wifi-caddy/defmt",
 ]
 log = ["dep:log", "wifi-caddy/log"]
-config = [
-    "wifi-caddy/portal",
-    "dep:embedded-io-async",
-    "dep:sequential-storage",
-    "dep:embassy-embedded-hal",
-    "dep:esp-storage",
-]
 captive = ["wifi-caddy/captive"]
-partition-table = ["dep:esp-bootloader-esp-idf"]
 debug-server = ["wifi-caddy/debug-server"]
 
 # this feature is required for the docs.rs build and release builds to work
@@ -82,14 +74,13 @@ log = { version = "0.4", optional = true }
 static_cell = { version = "2.1.1", default-features = false }
 enumset = "1.1.10"
 
-# config feature: flash storage backend
-embedded-io-async = { version = "0.7", optional = true }
-sequential-storage = { version = "7.0.1", optional = true, features = [
+embedded-io-async = { version = "0.7" }
+sequential-storage = { version = "7.0.1", features = [
     "alloc",
 ] }
-embassy-embedded-hal = { version = "0.5.0", optional = true, features = [
+embassy-embedded-hal = { version = "0.5.0", features = [
     "time",
 ] }
-esp-storage = { version = "0.8.1", optional = true }
+esp-storage = { version = "0.8.1" }
 
-esp-bootloader-esp-idf = { version = "0.4.0", optional = true, default-features = false }
+esp-bootloader-esp-idf = { version = "0.4.0", default-features = false }
