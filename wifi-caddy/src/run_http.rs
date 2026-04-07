@@ -1,6 +1,6 @@
 //! Generic HTTP config server loops (platform-agnostic).
 
-use crate::config_storage::{ConfigApi, ConfigFormGen, ConfigGet, ConfigLoadStore, ConfigStorage};
+use crate::config_storage::{ConfigStorage, ConfigType};
 use crate::portal;
 use crate::portal::config_ui::ConfigHandler;
 use embassy_net::Stack;
@@ -20,7 +20,7 @@ pub async fn run_http_config_loop<C, S>(
     io: &'static Mutex<CriticalSectionRawMutex, S>,
     on_updated: Option<&'static (dyn Fn(C::ChangedSet) + Send)>,
 ) where
-    C: ConfigFormGen + ConfigGet + ConfigApi + ConfigLoadStore + Send,
+    C: ConfigType + Send,
     C::ChangedSet: Send,
     S: ConfigStorage + Send,
 {
@@ -48,7 +48,7 @@ pub async fn run_http_debug_loop<C, S>(
     io: &'static Mutex<CriticalSectionRawMutex, S>,
     on_updated: Option<&'static (dyn Fn(C::ChangedSet) + Send)>,
 ) where
-    C: ConfigFormGen + ConfigGet + ConfigApi + ConfigLoadStore + Send,
+    C: ConfigType + Send,
     C::ChangedSet: Send,
     S: ConfigStorage + Send,
 {

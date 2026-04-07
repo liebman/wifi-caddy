@@ -1,16 +1,14 @@
 //! Generic config UI handler: "/" (config page), "/config-group/:group", "/config/:field".
 //!
 //! Implements `edge_http::io::server::Handler` to route requests manually.
-//! Use with a config type that implements `ConfigFormGen`, `ConfigApi`, and `ConfigLoadStore`;
+//! Use with a config type that implements `ConfigType`;
 //! storage is passed as a second mutex and must implement `ConfigStorage`.
 
 extern crate alloc;
 
 use core::fmt::{Debug, Display};
 
-use crate::config_storage::{
-    ConfigApi, ConfigChangedSet, ConfigFormGen, ConfigGet, ConfigLoadStore, ConfigStorage,
-};
+use crate::config_storage::{ConfigChangedSet, ConfigStorage, ConfigType};
 use edge_http::io::Error;
 use edge_http::io::server::Connection;
 use edge_nal::TcpSplit;
@@ -31,7 +29,7 @@ const CONFIG_GROUP_JSON_BUF_SIZE: usize = 512;
 /// - `GET /` -- config page (single static HTML string)
 /// - `GET /config-group/<group>` -- config group JSON get/set via `?set=...`
 /// - `GET /config/<field>` -- single field get/set via `?set=...`
-pub struct ConfigHandler<R: RawMutex + 'static, C: ConfigApi + 'static, S: 'static> {
+pub struct ConfigHandler<R: RawMutex + 'static, C: ConfigType + 'static, S: 'static> {
     /// Shared config mutex (read for GET, locked+mutated for SET).
     pub config: &'static Mutex<R, C>,
     /// Shared storage mutex (used to persist after SET).
@@ -90,7 +88,7 @@ fn path_only(full: &str) -> &str {
 impl<R, C, S> edge_http::io::server::Handler for ConfigHandler<R, C, S>
 where
     R: RawMutex + 'static,
-    C: ConfigFormGen + ConfigGet + ConfigApi + ConfigLoadStore + Send,
+    C: ConfigType + Send,
     S: ConfigStorage + Send,
 {
     type Error<E: Debug> = Error<E>;
@@ -139,7 +137,7 @@ where
 impl<R, C, S> ConfigHandler<R, C, S>
 where
     R: RawMutex + 'static,
-    C: ConfigFormGen + ConfigGet + ConfigApi + ConfigLoadStore + Send,
+    C: ConfigType + Send,
     S: ConfigStorage + Send,
 {
     async fn handle_config_group<T, const N: usize>(

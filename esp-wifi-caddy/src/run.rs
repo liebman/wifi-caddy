@@ -15,8 +15,8 @@ use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::mutex::Mutex;
 use esp_hal::peripherals::WIFI;
 use esp_storage::FlashStorage;
-use wifi_caddy::config_storage::{ConfigApi, ConfigFormGen, ConfigGet, ConfigLoadStore};
-use wifi_caddy::{ConfigHandle, ConfigStorageParams};
+use wifi_caddy::config_storage::ConfigServer;
+use wifi_caddy::ConfigHandle;
 
 use crate::flash_config::FlashConfigStorage;
 use crate::{WifiCommandSender, WifiStacks, init};
@@ -27,12 +27,10 @@ pub async fn run_inner<C, F>(
     wifi: WIFI<'static>,
     flash: FlashStorage<'static>,
     partition_range: Range<u32>,
-    params: ConfigStorageParams,
-    on_updated: Option<&'static (dyn Fn(C::ChangedSet) + Send)>,
     spawn_workers: F,
 ) -> Result<(WifiStacks, WifiCommandSender, ConfigHandle<C>), wifi_caddy::config_storage::ConfigError>
 where
-    C: ConfigFormGen + ConfigGet + ConfigApi + ConfigLoadStore + Send + 'static,
+    C: ConfigServer + Send + 'static,
     C::ChangedSet: Send,
     F: FnOnce(
         Spawner,
@@ -43,6 +41,9 @@ where
         Option<&'static (dyn Fn(C::ChangedSet) + Send)>,
     ),
 {
+    let params = C::storage_params();
+    let on_updated = C::on_updated();
+
     let mut storage = FlashConfigStorage::new(flash, partition_range);
     storage.mount(&params).await?;
     let config = C::load_from(&mut storage).await?;
@@ -93,12 +94,10 @@ pub async fn run_inner_by_partition<C, F>(
     wifi: WIFI<'static>,
     mut flash: FlashStorage<'static>,
     partition_name: &str,
-    params: ConfigStorageParams,
-    on_updated: Option<&'static (dyn Fn(C::ChangedSet) + Send)>,
     spawn_workers: F,
 ) -> Result<(WifiStacks, WifiCommandSender, ConfigHandle<C>), wifi_caddy::config_storage::ConfigError>
 where
-    C: ConfigFormGen + ConfigGet + ConfigApi + ConfigLoadStore + Send + 'static,
+    C: ConfigServer + Send + 'static,
     C::ChangedSet: Send,
     F: FnOnce(
         Spawner,
@@ -110,13 +109,11 @@ where
     ),
 {
     let partition_range = resolve_partition_range(&mut flash, partition_name)?;
-    run_inner(
+    run_inner::<C, F>(
         spawner,
         wifi,
         flash,
         partition_range,
-        params,
-        on_updated,
         spawn_workers,
     )
     .await

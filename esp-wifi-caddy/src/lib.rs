@@ -46,6 +46,8 @@ pub use wifi_caddy::ConfigHandle;
 #[cfg(feature = "config")]
 pub use wifi_caddy::ConfigStorageParams;
 #[cfg(feature = "config")]
+pub use wifi_caddy::{ConfigServer, ConfigType};
+#[cfg(feature = "config")]
 pub use wifi_caddy::config_storage;
 #[cfg(feature = "config")]
 pub use wifi_caddy::run_http_config_loop;
@@ -409,16 +411,15 @@ async fn ap_task(mut runner: Runner<'static, WifiDevice<'static>>) {
 #[macro_export]
 macro_rules! wifi_init {
     ($Config:ty, $spawner:expr, $wifi:expr, $flash:expr, $partition:expr) => {{
+        use $crate::config_storage::ConfigServer as _;
         $crate::__wifi_init_workers!($Config);
-        let config_rx = <$Config>::__init_config_update_channel();
+        let config_rx = <$Config as $crate::config_storage::ConfigServer>::init_update_channel();
 
         $crate::run_inner_by_partition::<$Config, _>(
             $spawner,
             $wifi,
             $flash,
             $partition,
-            <$Config>::__storage_params(),
-            <$Config>::__config_on_updated(),
             __spawn_config_http_workers,
         )
         .await
@@ -445,16 +446,15 @@ macro_rules! wifi_init {
 #[macro_export]
 macro_rules! wifi_init_raw {
     ($Config:ty, $spawner:expr, $wifi:expr, $flash:expr, $range:expr) => {{
+        use $crate::config_storage::ConfigServer as _;
         $crate::__wifi_init_workers!($Config);
-        let config_rx = <$Config>::__init_config_update_channel();
+        let config_rx = <$Config as $crate::config_storage::ConfigServer>::init_update_channel();
 
         $crate::run_inner::<$Config, _>(
             $spawner,
             $wifi,
             $flash,
             $range,
-            <$Config>::__storage_params(),
-            <$Config>::__config_on_updated(),
             __spawn_config_http_workers,
         )
         .await

@@ -130,11 +130,9 @@ fn collect_api_fields(fields: &syn::Fields) -> Vec<ApiField> {
                         notify = try_parse_lit_str(&meta);
                     } else if meta.path.is_ident("notify_group") {
                         // Backward compat: convert to PascalCase variant name
-                        if let Ok(expr) = meta.value().and_then(|v| v.parse::<syn::Expr>()) {
-                            if let syn::Expr::Lit(expr_lit) = expr {
-                                if let syn::Lit::Str(s) = expr_lit.lit {
-                                    notify = Some(to_pascal_case(&s.value()));
-                                }
+                        if let Ok(syn::Expr::Lit(expr_lit)) = meta.value().and_then(|v| v.parse::<syn::Expr>()) {
+                            if let syn::Lit::Str(s) = expr_lit.lit {
+                                notify = Some(to_pascal_case(&s.value()));
                             }
                         }
                     } else {
@@ -408,10 +406,16 @@ fn gen_notify_channel(attrs: &StructAttrs, num_pages: usize) -> TokenStream {
 }
 
 // ---------------------------------------------------------------------------
-// Phase 7 – storage_params as associated fn (emitted when #[config_server] is present)
+// Phase 7 – ConfigServer trait impl (emitted when #[config_server] is present)
 // ---------------------------------------------------------------------------
 
-fn gen_config_statics(attrs: &StructAttrs) -> TokenStream {
+fn gen_config_server_impl(
+    name: &syn::Ident,
+    attrs: &StructAttrs,
+    on_updated_body: &TokenStream,
+    init_channel_ret_type: &TokenStream,
+    init_channel_body: &TokenStream,
+) -> TokenStream {
     if !attrs.config_server_present {
         return quote! {};
     }
@@ -422,11 +426,24 @@ fn gen_config_statics(attrs: &StructAttrs) -> TokenStream {
     let storage_version_lit = proc_macro2::Literal::u32_unsuffixed(storage_version_val);
 
     quote! {
-        #[doc(hidden)]
-        pub fn __storage_params() -> wifi_caddy::ConfigStorageParams {
-            wifi_caddy::ConfigStorageParams {
-                magic: #storage_magic_lit,
-                format_version: #storage_version_lit,
+        impl wifi_caddy::config_storage::ConfigServer for #name {
+            type UpdateReceiver = #init_channel_ret_type;
+
+            fn storage_params() -> wifi_caddy::ConfigStorageParams {
+                wifi_caddy::ConfigStorageParams {
+                    magic: #storage_magic_lit,
+                    format_version: #storage_version_lit,
+                }
+            }
+
+            fn on_updated() -> Option<&'static (dyn Fn(
+                <Self as wifi_caddy::config_storage::ConfigApi>::ChangedSet,
+            ) + Send)> {
+                #on_updated_body
+            }
+
+            fn init_update_channel() -> Self::UpdateReceiver {
+                #init_channel_body
             }
         }
     }
@@ -436,7 +453,7 @@ fn gen_config_statics(attrs: &StructAttrs) -> TokenStream {
 // Entry point
 // ---------------------------------------------------------------------------
 
-/// Builds the group API, optional notify channel, and config statics for `WifiCaddyConfig`.
+/// Builds the group API, optional notify channel, and `ConfigServer` trait impl for `WifiCaddyConfig`.
 ///
 /// Struct-level attributes: `#[config_server(storage_magic, storage_version)]`,
 /// `#[config_notify(cap)]`.
@@ -444,15 +461,13 @@ fn gen_config_statics(attrs: &StructAttrs) -> TokenStream {
 /// from `#[config_store]`, `notify = "Wifi"` or `notify_group = "wifi"` add a `ConfigChange` variant.
 ///
 /// Emits: per-page DTOs (e.g. `MainConfig`) for JSON, `ConfigChange` enum, `ConfigApi` impl;
-/// if `#[config_notify]`, the channel types, `config_update_notify` (private), and
-/// `MyConfig::__init_config_update_channel()` (returns `ConfigUpdateReceiver`);
-/// if `#[config_server]`, `MyConfig::__storage_params()` (referencing `wifi_caddy::*`).
-///
-/// Always emits `MyConfig::__init_config_update_channel()` (returns `()` when notify is off).
+/// if `#[config_notify]`, the channel types and `config_update_notify` (private);
+/// if `#[config_server]`, `impl ConfigServer` with storage params, update callback, and
+/// channel initialization.
 ///
 /// All generated code references only `wifi_caddy::*` — no platform-specific types.
-/// Platform crates (e.g. `esp-wifi-caddy`) provide `wifi_init!` macros that call the
-/// `#[doc(hidden)]` associated functions.
+/// Platform crates (e.g. `esp-wifi-caddy`) use the `ConfigServer` trait to access
+/// storage params, notify callbacks, and channel initialization.
 pub fn derive_config_api_impl(input: &DeriveInput) -> TokenStream {
     let name = &input.ident;
 
@@ -475,7 +490,6 @@ pub fn derive_config_api_impl(input: &DeriveInput) -> TokenStream {
     let (dto_structs, get_arms, set_arms) = gen_dto_and_group_arms(name, &pages);
     let set_field_arms = gen_set_field_arms(&pages);
     let notify_channel_block = gen_notify_channel(&attrs, pages.len());
-    let config_statics_block = gen_config_statics(&attrs);
 
     let on_updated_body = if attrs.notify_channel {
         quote! { Some(&config_update_notify) }
@@ -495,6 +509,14 @@ pub fn derive_config_api_impl(input: &DeriveInput) -> TokenStream {
     } else {
         (quote! { () }, quote! { () })
     };
+
+    let config_server_impl = gen_config_server_impl(
+        name,
+        &attrs,
+        &on_updated_body,
+        &init_channel_ret_type,
+        &init_channel_body,
+    );
 
     let default_err = quote! { _ => Err(wifi_caddy::config_storage::ConfigError::InvalidData) };
 
@@ -531,20 +553,6 @@ pub fn derive_config_api_impl(input: &DeriveInput) -> TokenStream {
 
         #notify_channel_block
 
-        impl #name {
-            #[doc(hidden)]
-            pub fn __config_on_updated() -> Option<&'static (dyn Fn(
-                <Self as wifi_caddy::config_storage::ConfigApi>::ChangedSet,
-            ) + Send)> {
-                #on_updated_body
-            }
-
-            #[doc(hidden)]
-            pub fn __init_config_update_channel() -> #init_channel_ret_type {
-                #init_channel_body
-            }
-
-            #config_statics_block
-        }
+        #config_server_impl
     }
 }

@@ -20,6 +20,9 @@ pub use run_http::run_http_debug_loop;
 #[cfg(feature = "portal")]
 pub use run_http::run_http_config_loop;
 
+#[doc(hidden)]
+pub use config_storage::{ConfigServer, ConfigType};
+
 /// Parameters for config storage mount/format. Only the values are configurable;
 /// key IDs are fixed to match wifi-caddy-proc.
 #[doc(hidden)]
