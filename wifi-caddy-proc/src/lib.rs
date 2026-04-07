@@ -13,9 +13,10 @@ use syn::parse_macro_input;
 /// Derive macro for WiFi caddy config structs.
 ///
 /// Generates storage (load/store, keys, accessors), form HTML/JS for the config UI,
-/// and the group API for the HTTP handler. Use `#[config_server(...)]`, `#[config_notify]`,
-/// and `#[config_ui(...)]` on the struct for options. All generated code references only
-/// `wifi_caddy::*` (no platform-specific dependencies).
+/// and the group API with HTTP server support and config-update notifications.
+/// Optional struct-level attributes: `#[config_server(storage_magic, storage_version)]`,
+/// `#[config_notify(cap)]`, `#[config_ui(default_group, title, ...)]` for overrides.
+/// All generated code references only `wifi_caddy::*` (no platform-specific dependencies).
 #[proc_macro_derive(
     WifiCaddyConfig,
     attributes(config_store, config_form, config_server, config_notify, config_ui)

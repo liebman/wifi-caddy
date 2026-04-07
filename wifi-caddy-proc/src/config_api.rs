@@ -39,10 +39,10 @@ struct StructAttrs {
 // ---------------------------------------------------------------------------
 
 fn parse_struct_attrs(attrs: &[syn::Attribute]) -> StructAttrs {
-    let mut config_server_present = false;
+    let mut config_server_present = true;
     let mut storage_magic: Option<u32> = None;
     let mut storage_version: Option<u32> = None;
-    let mut notify_channel = false;
+    let mut notify_channel = true;
     let mut notify_cap: Option<usize> = None;
 
     for attr in attrs {
@@ -166,10 +166,10 @@ fn collect_api_fields(fields: &syn::Fields) -> Vec<ApiField> {
 /// Collect distinct notify variant names and emit the ConfigChange enum.
 /// Uses __None placeholder when no fields have a notify variant (EnumSet needs at least one variant).
 fn gen_config_change_enum(
-    pages: &std::collections::BTreeMap<String, Vec<ApiField>>,
+    pages: &[(String, Vec<ApiField>)],
 ) -> TokenStream {
     let mut variant_names: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
-    for fields in pages.values() {
+    for (_, fields) in pages {
         for f in fields {
             if let Some(ref v) = f.notify {
                 variant_names.insert(v.clone());
@@ -210,7 +210,7 @@ fn gen_config_change_enum(
 /// Returns (dto_structs, get_group_json arms, set_group_json arms).
 fn gen_dto_and_group_arms(
     name: &syn::Ident,
-    pages: &std::collections::BTreeMap<String, Vec<ApiField>>,
+    pages: &[(String, Vec<ApiField>)],
 ) -> (Vec<TokenStream>, Vec<TokenStream>, Vec<TokenStream>) {
     let mut dto_structs = Vec::new();
     let mut get_arms = Vec::new();
@@ -310,11 +310,11 @@ fn gen_dto_and_group_arms(
 // ---------------------------------------------------------------------------
 
 fn gen_set_field_arms(
-    pages: &std::collections::BTreeMap<String, Vec<ApiField>>,
+    pages: &[(String, Vec<ApiField>)],
 ) -> Vec<TokenStream> {
     pages
-        .values()
-        .flat_map(|fields| fields.iter())
+        .iter()
+        .flat_map(|(_, fields)| fields.iter())
         .map(|f| {
             let key_str = f.ident.to_string();
             let key_lit = syn::LitStr::new(&key_str, proc_macro2::Span::call_site());
@@ -455,15 +455,15 @@ fn gen_config_server_impl(
 
 /// Builds the group API, optional notify channel, and `ConfigServer` trait impl for `WifiCaddyConfig`.
 ///
-/// Struct-level attributes: `#[config_server(storage_magic, storage_version)]`,
-/// `#[config_notify(cap)]`.
+/// Optional struct-level attributes: `#[config_server(storage_magic, storage_version)]`,
+/// `#[config_notify(cap)]` (both enabled by default).
 /// Field-level: from `#[config_form]` we use `skip` and `input_type` (password → redacted in GET);
 /// from `#[config_store]`, `notify = "Wifi"` or `notify_group = "wifi"` add a `ConfigChange` variant.
 ///
 /// Emits: per-page DTOs (e.g. `MainConfig`) for JSON, `ConfigChange` enum, `ConfigApi` impl;
-/// if `#[config_notify]`, the channel types and `config_update_notify` (private);
-/// if `#[config_server]`, `impl ConfigServer` with storage params, update callback, and
-/// channel initialization.
+/// the channel types and `config_update_notify` (private);
+/// `impl ConfigServer` with storage params, update callback, and
+/// channel initialization (both emitted by default; opt out not supported).
 ///
 /// All generated code references only `wifi_caddy::*` — no platform-specific types.
 /// Platform crates (e.g. `esp-wifi-caddy`) use the `ConfigServer` trait to access
@@ -479,11 +479,15 @@ pub fn derive_config_api_impl(input: &DeriveInput) -> TokenStream {
     let attrs = parse_struct_attrs(&input.attrs);
     let api_fields = collect_api_fields(&data.fields);
 
-    // Group fields by page name (single-page: all "main")
-    let mut pages: std::collections::BTreeMap<String, Vec<ApiField>> =
-        std::collections::BTreeMap::new();
+    // Group fields by page name, preserving declaration order
+    let mut pages: Vec<(String, Vec<ApiField>)> = Vec::new();
     for f in api_fields {
-        pages.entry(f.page.clone()).or_default().push(f);
+        let page_name = f.page.clone();
+        if let Some(entry) = pages.iter_mut().find(|(name, _)| *name == page_name) {
+            entry.1.push(f);
+        } else {
+            pages.push((page_name, vec![f]));
+        }
     }
 
     let config_change_enum = gen_config_change_enum(&pages);

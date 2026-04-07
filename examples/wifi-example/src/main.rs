@@ -31,9 +31,6 @@ esp_bootloader_esp_idf::esp_app_desc!();
 
 /// App config: WiFi credentials and example string and integer.
 #[derive(Clone, Debug, Default, WifiCaddyConfig)]
-#[config_server] // enables HTTP server
-#[config_notify] // enables config update notifications
-#[config_ui(default_group = "Network")]
 pub struct AppConfig {
     #[config_store(env_default = "WIFI_SSID", notify = "Wifi")]
     #[config_form(page = "Network", fieldset = "WiFi", help = "Network name (SSID)")]

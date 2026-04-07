@@ -153,7 +153,7 @@ struct UiAttrs {
     nav_left: String,
     nav_right: String,
     extra_css: String,
-    default_group: String,
+    default_group: Option<String>,
 }
 
 // ---------------------------------------------------------------------------
@@ -187,7 +187,7 @@ fn parse_ui_attrs(attrs: &[syn::Attribute]) -> UiAttrs {
     let mut nav_left = String::from("<span>Configuration</span>");
     let mut nav_right = String::from("<span></span>");
     let mut extra_css = String::new();
-    let mut default_group = String::from("main");
+    let mut default_group: Option<String> = None;
 
     for attr in attrs {
         if attr.path().is_ident("config_ui") {
@@ -218,7 +218,7 @@ fn parse_ui_attrs(attrs: &[syn::Attribute]) -> UiAttrs {
                     }
                 } else if meta.path.is_ident("default_group") {
                     if let Some(v) = try_parse_lit_str(&meta) {
-                        default_group = v;
+                        default_group = Some(v);
                     }
                 } else {
                     consume_meta_value(&meta);
@@ -479,9 +479,14 @@ fn gen_js_string(page_name: &str, fields: &[FormField]) -> Result<String, String
 
 fn gen_full_page(
     ui: &UiAttrs,
-    pages: &std::collections::BTreeMap<String, Vec<FormField>>,
+    pages: &[(String, Vec<FormField>)],
 ) -> Result<String, String> {
-    let default_id = page_name_to_js_id(&ui.default_group);
+    let resolved_default = ui
+        .default_group
+        .as_deref()
+        .or_else(|| pages.first().map(|(name, _)| name.as_str()))
+        .unwrap_or("main");
+    let default_id = page_name_to_js_id(resolved_default);
     let show_tabs = pages.len() > 1;
 
     let mut page = String::with_capacity(8192);
@@ -504,7 +509,7 @@ fn gen_full_page(
     // Tab bar (only for multi-page)
     if show_tabs {
         page.push_str("<div class=\"config-tabs\">");
-        for page_name in pages.keys() {
+        for (page_name, _) in pages {
             let id = page_name_to_js_id(page_name);
             let active_class = if id == default_id {
                 "config-tab active"
@@ -591,10 +596,14 @@ pub fn derive_config_form_impl(input: &DeriveInput) -> TokenStream {
     let ui = parse_ui_attrs(&input.attrs);
     let form_fields = parse_form_fields(data);
 
-    let mut pages: std::collections::BTreeMap<String, Vec<FormField>> =
-        std::collections::BTreeMap::new();
+    let mut pages: Vec<(String, Vec<FormField>)> = Vec::new();
     for f in form_fields {
-        pages.entry(f.page.clone()).or_default().push(f);
+        let page_name = f.page.clone();
+        if let Some(entry) = pages.iter_mut().find(|(name, _)| *name == page_name) {
+            entry.1.push(f);
+        } else {
+            pages.push((page_name, vec![f]));
+        }
     }
 
     // Validate: no fieldset spans multiple pages
