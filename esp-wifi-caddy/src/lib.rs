@@ -41,11 +41,11 @@ mod run;
 // Re-export platform-agnostic types from wifi-caddy for backward compatibility
 pub use wifi_caddy::ConfigHandle;
 pub use wifi_caddy::ConfigStorageParams;
-pub use wifi_caddy::{ConfigServer, ConfigType};
 pub use wifi_caddy::config_storage;
 pub use wifi_caddy::run_http_config_loop;
 #[cfg(feature = "debug-server")]
 pub use wifi_caddy::run_http_debug_loop;
+pub use wifi_caddy::{ConfigServer, ConfigType};
 
 #[doc(hidden)]
 pub use flash_config::FlashConfigStorage;

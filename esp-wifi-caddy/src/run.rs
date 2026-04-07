@@ -14,8 +14,8 @@ use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::mutex::Mutex;
 use esp_hal::peripherals::WIFI;
 use esp_storage::FlashStorage;
-use wifi_caddy::config_storage::ConfigServer;
 use wifi_caddy::ConfigHandle;
+use wifi_caddy::config_storage::ConfigServer;
 
 use crate::flash_config::FlashConfigStorage;
 use crate::{WifiCommandSender, WifiStacks, init};
@@ -57,14 +57,7 @@ where
 
     let sta_stack = wifi_stacks.sta;
     wifi_caddy::portal::start(spawner, wifi_stacks.ap, move |s, ap_stack| {
-        spawn_workers(
-            s,
-            ap_stack,
-            sta_stack,
-            config_mutex,
-            io_mutex,
-            on_updated,
-        );
+        spawn_workers(s, ap_stack, sta_stack, config_mutex, io_mutex, on_updated);
     });
 
     Ok((wifi_stacks, wifi_sender, ConfigHandle::new(config_mutex)))
@@ -106,12 +99,5 @@ where
     ),
 {
     let partition_range = resolve_partition_range(&mut flash, partition_name)?;
-    run_inner::<C, F>(
-        spawner,
-        wifi,
-        flash,
-        partition_range,
-        spawn_workers,
-    )
-    .await
+    run_inner::<C, F>(spawner, wifi, flash, partition_range, spawn_workers).await
 }

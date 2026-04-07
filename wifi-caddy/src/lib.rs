@@ -13,9 +13,9 @@ pub mod config_storage;
 pub mod portal;
 mod run_http;
 
+pub use run_http::run_http_config_loop;
 #[cfg(feature = "debug-server")]
 pub use run_http::run_http_debug_loop;
-pub use run_http::run_http_config_loop;
 
 #[doc(hidden)]
 pub use config_storage::{ConfigServer, ConfigType};

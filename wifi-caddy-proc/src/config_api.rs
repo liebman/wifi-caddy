@@ -130,7 +130,9 @@ fn collect_api_fields(fields: &syn::Fields) -> Vec<ApiField> {
                         notify = try_parse_lit_str(&meta);
                     } else if meta.path.is_ident("notify_group") {
                         // Backward compat: convert to PascalCase variant name
-                        if let Ok(syn::Expr::Lit(expr_lit)) = meta.value().and_then(|v| v.parse::<syn::Expr>()) {
+                        if let Ok(syn::Expr::Lit(expr_lit)) =
+                            meta.value().and_then(|v| v.parse::<syn::Expr>())
+                        {
                             if let syn::Lit::Str(s) = expr_lit.lit {
                                 notify = Some(to_pascal_case(&s.value()));
                             }
@@ -165,9 +167,7 @@ fn collect_api_fields(fields: &syn::Fields) -> Vec<ApiField> {
 
 /// Collect distinct notify variant names and emit the ConfigChange enum.
 /// Uses __None placeholder when no fields have a notify variant (EnumSet needs at least one variant).
-fn gen_config_change_enum(
-    pages: &[(String, Vec<ApiField>)],
-) -> TokenStream {
+fn gen_config_change_enum(pages: &[(String, Vec<ApiField>)]) -> TokenStream {
     let mut variant_names: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
     for (_, fields) in pages {
         for f in fields {
@@ -309,9 +309,7 @@ fn gen_dto_and_group_arms(
 // Phase 5 – set_field arms (single key=value from HTTP query string)
 // ---------------------------------------------------------------------------
 
-fn gen_set_field_arms(
-    pages: &[(String, Vec<ApiField>)],
-) -> Vec<TokenStream> {
+fn gen_set_field_arms(pages: &[(String, Vec<ApiField>)]) -> Vec<TokenStream> {
     pages
         .iter()
         .flat_map(|(_, fields)| fields.iter())

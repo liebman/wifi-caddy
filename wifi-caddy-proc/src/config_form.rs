@@ -358,11 +358,7 @@ fn gen_visible_input_html(f: &FormField, info: &ResolvedInfo) -> String {
         .map(|s| format!(r#" max="{}""#, escape_html(s)))
         .unwrap_or_default();
     let help_esc = escape_html(&f.help);
-    let step_attr = if info.is_float {
-        r#" step="any""#
-    } else {
-        ""
-    };
+    let step_attr = if info.is_float { r#" step="any""# } else { "" };
     let req_attr = match f.input_type.as_deref() {
         Some("password") => "",
         _ => " required",
@@ -477,10 +473,7 @@ fn gen_js_string(page_name: &str, fields: &[FormField]) -> Result<String, String
 // Phase 4 – full page assembly
 // ---------------------------------------------------------------------------
 
-fn gen_full_page(
-    ui: &UiAttrs,
-    pages: &[(String, Vec<FormField>)],
-) -> Result<String, String> {
+fn gen_full_page(ui: &UiAttrs, pages: &[(String, Vec<FormField>)]) -> Result<String, String> {
     let resolved_default = ui
         .default_group
         .as_deref()
