@@ -9,6 +9,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased] - ReleaseDate
 
+### Changed
+
+- All public functions (`run_inner`, `run_inner_by_partition`, `__spawn_config_http_workers`, init macros) accept `DynamicSender` directly instead of `Option<DynamicSender>`. ([#4], closes [#3])
+- `ConfigHandle` is now a type alias; functions return the mutex ref directly instead of wrapping it. ([#4])
+
+[#3]: https://github.com/liebman/wifi-caddy/issues/3
+[#4]: https://github.com/liebman/wifi-caddy/pull/4
+
 ## [0.1.0] - 2026-03-29
 
 <!-- next-url -->
