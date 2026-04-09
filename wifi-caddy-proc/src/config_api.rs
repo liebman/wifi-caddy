@@ -156,39 +156,33 @@ fn collect_api_fields(fields: &syn::Fields) -> Vec<ApiField> {
 // ---------------------------------------------------------------------------
 
 /// Collect distinct notify variant names and emit the ConfigChange enum.
-/// Uses __None placeholder when no fields have a notify variant (EnumSet needs at least one variant).
+/// Fields without an explicit `notify = "..."` are assigned the catchall `Changed` variant.
 fn gen_config_change_enum(pages: &[(String, Vec<ApiField>)]) -> TokenStream {
     let mut variant_names: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
+    let mut has_untagged = false;
     for (_, fields) in pages {
         for f in fields {
             if let Some(ref v) = f.notify {
                 variant_names.insert(v.clone());
+            } else {
+                has_untagged = true;
             }
         }
+    }
+    if has_untagged {
+        variant_names.insert("Changed".to_string());
     }
     let variant_idents: Vec<syn::Ident> = variant_names
         .iter()
         .map(|s| syn::Ident::new(s, proc_macro2::Span::call_site()))
         .collect();
 
-    // EnumSetType provides Clone, Copy, PartialEq, Eq; repr = "u64" for bitflags-style sets
-    if variant_idents.is_empty() {
-        quote! {
-            #[derive(enumset::EnumSetType)]
-            #[enumset(repr = "u64")]
-            pub enum ConfigChange {
-                #[doc(hidden)]
-                __None,
-            }
-        }
-    } else {
-        let variants = variant_idents.iter().map(|v| quote! { #v });
-        quote! {
-            #[derive(enumset::EnumSetType)]
-            #[enumset(repr = "u64")]
-            pub enum ConfigChange {
-                #(#variants),*
-            }
+    let variants = variant_idents.iter().map(|v| quote! { #v });
+    quote! {
+        #[derive(enumset::EnumSetType)]
+        #[enumset(repr = "u64")]
+        pub enum ConfigChange {
+            #(#variants),*
         }
     }
 }
@@ -250,14 +244,10 @@ fn gen_dto_and_group_arms(
                 let i = &f.ident;
                 let setter = format_ident!("set_{}", i);
                 let field_ty = &f.ty;
-                let insert_line: TokenStream = f
-                    .notify
-                    .as_ref()
-                    .map(|v| {
-                        let variant_ident = syn::Ident::new(v, proc_macro2::Span::call_site());
-                        quote! { changed.insert(ConfigChange::#variant_ident); }
-                    })
-                    .unwrap_or_else(|| quote! {});
+                let variant_name = f.notify.as_deref().unwrap_or("Changed");
+                let variant_ident =
+                    syn::Ident::new(variant_name, proc_macro2::Span::call_site());
+                let insert_line = quote! { changed.insert(ConfigChange::#variant_ident); };
 
                 if f.is_password {
                     // Skip applying if the form sent an empty password (keep existing value)
@@ -310,36 +300,21 @@ fn gen_set_field_arms(pages: &[(String, Vec<ApiField>)]) -> Vec<TokenStream> {
             let setter = format_ident!("set_{}", i);
             let field_ty = &f.ty;
 
-            // Build the compare-and-apply body, optionally inserting a ConfigChange variant
-            let variant_ts = f.notify.as_ref().map(|v| {
-                let vid = syn::Ident::new(v, proc_macro2::Span::call_site());
-                quote! { ConfigChange::#vid }
-            });
-            let parse_and_apply = match &variant_ts {
-                Some(v) => quote! {
-                    if let Ok(parsed) = value.parse::<#field_ty>() {
-                        if self.#i != parsed {
-                            self.#setter(parsed);
-                            let mut changed = enumset::EnumSet::<ConfigChange>::new();
-                            changed.insert(#v);
-                            Ok(Some(changed))
-                        } else {
-                            Ok(Some(enumset::EnumSet::new()))
-                        }
+            let variant_name = f.notify.as_deref().unwrap_or("Changed");
+            let vid = syn::Ident::new(variant_name, proc_macro2::Span::call_site());
+            let parse_and_apply = quote! {
+                if let Ok(parsed) = value.parse::<#field_ty>() {
+                    if self.#i != parsed {
+                        self.#setter(parsed);
+                        let mut changed = enumset::EnumSet::<ConfigChange>::new();
+                        changed.insert(ConfigChange::#vid);
+                        Ok(Some(changed))
                     } else {
-                        Err(wifi_caddy::config_storage::ConfigError::InvalidData)
-                    }
-                },
-                None => quote! {
-                    if let Ok(parsed) = value.parse::<#field_ty>() {
-                        if self.#i != parsed {
-                            self.#setter(parsed);
-                        }
                         Ok(Some(enumset::EnumSet::new()))
-                    } else {
-                        Err(wifi_caddy::config_storage::ConfigError::InvalidData)
                     }
-                },
+                } else {
+                    Err(wifi_caddy::config_storage::ConfigError::InvalidData)
+                }
             };
 
             if f.is_password {

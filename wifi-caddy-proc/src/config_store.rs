@@ -387,10 +387,7 @@ pub fn derive_config_store_impl(input: &DeriveInput) -> TokenStream {
             #(#setters)*
 
             pub fn get(&self, key: &str) -> Option<alloc::string::String> {
-                match key {
-                    #(#get_str_arms),*,
-                    _ => None,
-                }
+                <Self as wifi_caddy::config_storage::ConfigGet>::get(self, key)
             }
 
             pub fn set(&mut self, key: &str, value: &str) -> bool {

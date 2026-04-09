@@ -15,7 +15,6 @@ use embassy_sync::channel::DynamicSender;
 use embassy_sync::mutex::Mutex;
 use esp_hal::peripherals::WIFI;
 use esp_storage::FlashStorage;
-use wifi_caddy::ConfigHandle;
 use wifi_caddy::config_storage::ConfigServer;
 
 use crate::flash_config::FlashConfigStorage;
@@ -29,7 +28,7 @@ pub async fn run_inner<C, F>(
     partition_range: Range<u32>,
     notify: DynamicSender<'static, C::ChangedSet>,
     spawn_workers: F,
-) -> Result<(WifiStacks, WifiCommandSender, ConfigHandle<C>), wifi_caddy::config_storage::ConfigError>
+) -> Result<(WifiStacks, WifiCommandSender, wifi_caddy::ConfigHandle<C>), wifi_caddy::config_storage::ConfigError>
 where
     C: ConfigServer + Send + 'static,
     C::ChangedSet: Send,
@@ -61,7 +60,7 @@ where
         spawn_workers(s, ap_stack, sta_stack, config_mutex, io_mutex, notify);
     });
 
-    Ok((wifi_stacks, wifi_sender, ConfigHandle::new(config_mutex)))
+    Ok((wifi_stacks, wifi_sender, config_mutex))
 }
 
 #[doc(hidden)]
@@ -87,7 +86,7 @@ pub async fn run_inner_by_partition<C, F>(
     partition_name: &str,
     notify: DynamicSender<'static, C::ChangedSet>,
     spawn_workers: F,
-) -> Result<(WifiStacks, WifiCommandSender, ConfigHandle<C>), wifi_caddy::config_storage::ConfigError>
+) -> Result<(WifiStacks, WifiCommandSender, wifi_caddy::ConfigHandle<C>), wifi_caddy::config_storage::ConfigError>
 where
     C: ConfigServer + Send + 'static,
     C::ChangedSet: Send,

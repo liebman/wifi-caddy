@@ -31,34 +31,9 @@ pub struct ConfigStorageParams {
     pub format_version: u32,
 }
 
-/// Handle returned by the platform-specific init macro (e.g. `esp_wifi_caddy::wifi_init!`).
-/// Use [`.config()`](ConfigHandle::config) to get the shared config mutex to pass into
-/// application tasks.
-pub struct ConfigHandle<C: 'static> {
-    config: &'static embassy_sync::mutex::Mutex<
-        embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex,
-        C,
-    >,
-}
-
-impl<C: 'static> ConfigHandle<C> {
-    /// Create a new `ConfigHandle` wrapping the given config mutex.
-    pub fn new(
-        config: &'static embassy_sync::mutex::Mutex<
-            embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex,
-            C,
-        >,
-    ) -> Self {
-        Self { config }
-    }
-
-    /// Returns the shared config mutex (`'static`), for use in tasks or elsewhere.
-    pub fn config(
-        &self,
-    ) -> &'static embassy_sync::mutex::Mutex<
-        embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex,
-        C,
-    > {
-        self.config
-    }
-}
+/// Shared config mutex returned by the platform-specific init macro
+/// (e.g. `esp_wifi_caddy::wifi_init!`). Pass directly to application tasks.
+pub type ConfigHandle<C> = &'static embassy_sync::mutex::Mutex<
+    embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex,
+    C,
+>;

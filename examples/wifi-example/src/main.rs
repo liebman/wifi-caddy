@@ -130,11 +130,9 @@ async fn main(spawner: Spawner) {
     #[cfg(any(feature = "esp32s3", feature = "esp32"))]
     let flash = flash.multicore_auto_park();
 
-    let (wifi_stacks, wifi_sender, config_handle, config_rx) =
+    let (wifi_stacks, wifi_sender, config, config_rx) =
         esp_wifi_caddy::wifi_init!(AppConfig, spawner, peripherals.WIFI, flash, "config")
             .expect("wifi_init");
-
-    let config = config_handle.config();
 
     spawner.spawn(ip_address_task(wifi_stacks.sta)).ok();
     info!("IP address task spawned (reports IP changes)");

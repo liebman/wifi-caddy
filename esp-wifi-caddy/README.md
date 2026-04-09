@@ -51,7 +51,7 @@ HTTP portal for runtime configuration.
 ## Boot flow (with config + proc macro)
 
 1. `AppConfig::init_wifi(spawner, wifi, flash, "config")` initializes WiFi, mounts flash config storage from the named partition, loads saved config, and starts the HTTP config server on the AP stack.
-2. Your app receives `(WifiStacks, WifiCommandSender, ConfigHandle, config_rx)`.
+2. Your app receives `(WifiStacks, WifiCommandSender, ConfigHandle<AppConfig>, config_rx)` where `ConfigHandle` is a `&'static Mutex` alias.
 3. Send `StaUp(ssid, pass)` to connect, `APUp(prefix)` to enable the AP with the config portal, `APDown` to disable it.
 4. Use the returned channel receiver (`config_rx`) to react when settings are updated via the portal.
 
@@ -104,7 +104,7 @@ pub struct AppConfig {
 Then in your `main`:
 
 ```rust,ignore
-let (wifi_stacks, wifi_sender, config_handle, config_rx) =
+let (wifi_stacks, wifi_sender, config, config_rx) =
     esp_wifi_caddy::wifi_init!(AppConfig, spawner, wifi, flash, "config")
         .expect("wifi_init");
 ```
@@ -116,7 +116,7 @@ This single call:
 4. Starts the HTTP config server on the AP stack (with DHCP and optional captive DNS).
 5. Initializes the config-update channel (capacity defaults to the number of config pages, or `#[config_notify(cap = N)]`) and returns the receiver as the 4th tuple element.
 
-Use `config_handle.config()` to get the shared `Mutex<AppConfig>` for your tasks.
+`config` is a `&'static Mutex<AppConfig>` — pass it directly to your tasks.
 Use `config_rx.receive().await` in a task loop to react to config changes.
 
 The config UI supports multiple tabs when you use `page = "Name"` on `#[config_form]`. Each tab
@@ -211,7 +211,7 @@ attributes (`#[config_store]`, `#[config_form]`, `#[config_server]`, `#[config_n
 
 | Item | Description |
 |------|-------------|
-| `ConfigHandle` | Shared config handle returned by `wifi_init!`; use `.config()` to get the mutex for tasks |
+| `ConfigHandle<C>` | Type alias for `&'static Mutex<CriticalSectionRawMutex, C>`, returned by `wifi_init!` |
 | `ConfigError` | Error type from `init_wifi` (e.g. backend, invalid data) |
 | `config_storage::ConfigStorage` | Trait to implement an alternative storage backend |
 | `config_storage::ConfigValue` | Trait to implement for custom field types in your config struct (serialization + getter) |
