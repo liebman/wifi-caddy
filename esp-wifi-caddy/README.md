@@ -114,7 +114,7 @@ This single call:
 2. Mounts flash config storage from the named partition.
 3. Loads saved config values.
 4. Starts the HTTP config server on the AP stack (with DHCP and optional captive DNS).
-5. If `#[config_notify]` is present, creates a config-update channel and returns the receiver as the 4th tuple element.
+5. Initializes the config-update channel (capacity defaults to the number of config pages, or `#[config_notify(cap = N)]`) and returns the receiver as the 4th tuple element.
 
 Use `config_handle.config()` to get the shared `Mutex<AppConfig>` for your tasks.
 Use `config_rx.receive().await` in a task loop to react to config changes.

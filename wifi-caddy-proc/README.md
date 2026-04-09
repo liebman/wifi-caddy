@@ -56,19 +56,10 @@ in your `Cargo.toml` for the generated code to compile.
 | `serde` | `Serialize` / `Deserialize` on per-group DTOs |
 | `serde-json-core` | `to_slice` / `from_str` in `ConfigApi` impl |
 | `enumset` | `EnumSet<ConfigChange>` changed-set type |
+| `embassy-sync` | `Channel`, `DynamicSender`, mutex types for generated notify path |
+| `static_cell` | Static storage for the update channel |
 
-**With `#[config_notify]`:**
-
-| Crate | Used for |
-|-------|----------|
-| `embassy-sync` | `Channel`, `CriticalSectionRawMutex` |
-| `static_cell` | Static storage for the notify channel |
-
-**With `#[config_server]`:**
-
-| Crate | Used for |
-|-------|----------|
-| `wifi-caddy` | `ConfigStorageParams` type for statics |
+Struct-level `#[config_server]` / `#[config_notify]` do not toggle these off; they only override default storage params or channel capacity.
 
 See [wifi-example/Cargo.toml](../examples/wifi-example/Cargo.toml) for a
 complete working `[dependencies]` section.
@@ -107,11 +98,11 @@ Use these on your config struct and its fields when deriving `WifiCaddyConfig`.
 ### `#[config_server(...)]` (struct-level only)
 
 - `storage_magic`, `storage_version` – override flash config storage params.
-- Omit the attribute to disable the statics block entirely.
+- If omitted, the derive still emits `ConfigServer` and storage statics; defaults apply for magic and format version.
 
 ### `#[config_notify]` (struct-level only)
 
-- Generate channel for config change notifications. Optional: `#[config_notify(cap = N)]` to tune channel capacity (default: number of config pages).
+- Optional capacity override: `#[config_notify(cap = N)]` (default: number of config pages). The update channel and `init_notify` are always generated; this attribute does not enable or disable them.
 
 ### `#[config_ui(...)]` (struct-level only)
 

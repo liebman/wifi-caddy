@@ -1,4 +1,4 @@
-//! Group API and notify codegen for `WifiCaddyConfig`: JSON get/set, optional channel, config statics.
+//! Group API and notify codegen for `WifiCaddyConfig`: JSON get/set, `ConfigServer` + update channel, statics.
 
 use crate::utils::{consume_meta_value, to_pascal_case, try_parse_lit_int, try_parse_lit_str};
 use proc_macro2::TokenStream;
@@ -383,7 +383,7 @@ fn gen_notify_channel(attrs: &StructAttrs, num_pages: usize) -> TokenStream {
 }
 
 // ---------------------------------------------------------------------------
-// Phase 7 – ConfigServer trait impl (emitted when #[config_server] is present)
+// Phase 7 – ConfigServer trait impl (always emitted; #[config_server] only sets storage defaults)
 // ---------------------------------------------------------------------------
 
 fn gen_config_server_impl(
@@ -424,16 +424,16 @@ fn gen_config_server_impl(
 // Entry point
 // ---------------------------------------------------------------------------
 
-/// Builds the group API, optional notify channel, and `ConfigServer` trait impl for `WifiCaddyConfig`.
+/// Builds the group API, notify channel machinery, and `ConfigServer` impl for `WifiCaddyConfig`.
 ///
-/// Optional struct-level attributes: `#[config_server(storage_magic, storage_version)]`,
-/// `#[config_notify(cap)]` (both enabled by default).
+/// Struct-level overrides (optional on the struct): `#[config_server(storage_magic, storage_version)]`
+/// for flash params (defaults apply if omitted), and `#[config_notify(cap = N)]` for channel capacity
+/// (default: number of config pages). Omitting these attributes does not disable codegen.
 /// Field-level: from `#[config_form]` we use `skip` and `input_type` (password → redacted in GET);
 /// from `#[config_store]`, `notify = "Wifi"` or `notify_group = "wifi"` add a `ConfigChange` variant.
 ///
 /// Emits: per-page DTOs (e.g. `MainConfig`) for JSON, `ConfigChange` enum, `ConfigApi` impl;
-/// channel types; `impl ConfigServer` with storage params and `init_notify`
-/// (both emitted by default; opt out not supported).
+/// channel types; `impl ConfigServer` with storage params and `init_notify`. Opt-out is not supported.
 ///
 /// All generated code references only `wifi_caddy::*` — no platform-specific types.
 /// Platform crates (e.g. `esp-wifi-caddy`) use the `ConfigServer` trait to access
