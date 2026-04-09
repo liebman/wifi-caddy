@@ -5,6 +5,7 @@ use crate::portal;
 use crate::portal::config_ui::ConfigHandler;
 use embassy_net::Stack;
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
+use embassy_sync::channel::DynamicSender;
 use embassy_sync::mutex::Mutex;
 
 /// Build a `ConfigHandler` from the shared config/io mutexes,
@@ -18,7 +19,7 @@ pub async fn run_http_config_loop<C, S>(
     stack: Stack<'static>,
     config: &'static Mutex<CriticalSectionRawMutex, C>,
     io: &'static Mutex<CriticalSectionRawMutex, S>,
-    on_updated: Option<&'static (dyn Fn(C::ChangedSet) + Send)>,
+    notify: DynamicSender<'static, C::ChangedSet>,
 ) where
     C: ConfigType + Send,
     C::ChangedSet: Send,
@@ -29,7 +30,7 @@ pub async fn run_http_config_loop<C, S>(
     let handler = ConfigHandler {
         config,
         io,
-        on_updated,
+        notify,
         #[cfg(feature = "captive")]
         captive: true,
     };
@@ -46,7 +47,7 @@ pub async fn run_http_debug_loop<C, S>(
     stack: Stack<'static>,
     config: &'static Mutex<CriticalSectionRawMutex, C>,
     io: &'static Mutex<CriticalSectionRawMutex, S>,
-    on_updated: Option<&'static (dyn Fn(C::ChangedSet) + Send)>,
+    notify: DynamicSender<'static, C::ChangedSet>,
 ) where
     C: ConfigType + Send,
     C::ChangedSet: Send,
@@ -67,7 +68,7 @@ pub async fn run_http_debug_loop<C, S>(
     let handler = ConfigHandler {
         config,
         io,
-        on_updated,
+        notify,
         #[cfg(feature = "captive")]
         captive: false,
     };

@@ -7,11 +7,10 @@ use alloc::string::String;
 
 use crate::config_storage::{ConfigApi, ConfigChangedSet, ConfigLoadStore, ConfigStorage};
 use embassy_sync::blocking_mutex::raw::RawMutex;
+use embassy_sync::channel::DynamicSender;
 use embassy_sync::mutex::Mutex;
-use serde::Deserialize;
 
 /// Query for config-group endpoints: optional `set` body (JSON string).
-#[derive(Deserialize)]
 pub struct ConfigQuery {
     /// If present, apply this JSON to the config group and persist.
     pub set: Option<String>,
@@ -29,23 +28,20 @@ pub enum ConfigGroupResult {
 ///
 /// Locks config; if `query.set` is some, calls `set_group_json` to get the set of
 /// actually changed variants; only then persists (store_to) when the set is non-empty,
-/// and if `on_updated` is provided calls it with that set. Returns group JSON.
-pub async fn handle_config_group<R, C, S, F>(
+/// and sends the changed set via `notify`. Returns group JSON.
+pub async fn handle_config_group<R, C, S>(
     config: &Mutex<R, C>,
     io: &Mutex<R, S>,
     group: &str,
     query: ConfigQuery,
     buf: &mut [u8],
-    on_updated: Option<F>,
+    notify: DynamicSender<'_, C::ChangedSet>,
 ) -> ConfigGroupResult
 where
     R: RawMutex,
     C: ConfigApi + ConfigLoadStore,
     S: ConfigStorage,
-    F: Fn(C::ChangedSet),
 {
-    let mut notify_changed = None;
-
     if let Some(ref set_json) = query.set {
         let mut config_guard = config.lock().await;
         let changed = match config_guard.set_group_json(group, set_json) {
@@ -69,14 +65,8 @@ where
                 );
                 return ConfigGroupResult::Err(500, alloc::format!("{}", e));
             }
-            notify_changed = Some(changed);
+            let _ = notify.try_send(changed);
         }
-    }
-
-    if let (Some(changed), Some(ref f)) = (notify_changed, on_updated) {
-        debug!("handle_config_group: calling on_updated");
-        f(changed);
-        debug!("handle_config_group: on_updated returned");
     }
 
     let config_guard = config.lock().await;

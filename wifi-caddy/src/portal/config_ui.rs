@@ -4,8 +4,6 @@
 //! Use with a config type that implements `ConfigType`;
 //! storage is passed as a second mutex and must implement `ConfigStorage`.
 
-extern crate alloc;
-
 use core::fmt::{Debug, Display};
 
 use crate::config_storage::{ConfigChangedSet, ConfigStorage, ConfigType};
@@ -13,12 +11,13 @@ use edge_http::io::Error;
 use edge_http::io::server::Connection;
 use edge_nal::TcpSplit;
 use embassy_sync::blocking_mutex::raw::RawMutex;
+use embassy_sync::channel::DynamicSender;
 use embassy_sync::mutex::Mutex;
 use embedded_io_async::{ErrorType, Read, Write};
 
 use super::config_group::{ConfigGroupResult, ConfigQuery, handle_config_group};
 use super::config_page::serve_config_page;
-use super::responses::{send_json, send_text, send_text_string};
+use super::responses::{send_json, send_text};
 
 /// Buffer size for JSON config-group responses.
 const CONFIG_GROUP_JSON_BUF_SIZE: usize = 512;
@@ -34,8 +33,8 @@ pub struct ConfigHandler<R: RawMutex + 'static, C: ConfigType + 'static, S: 'sta
     pub config: &'static Mutex<R, C>,
     /// Shared storage mutex (used to persist after SET).
     pub io: &'static Mutex<R, S>,
-    /// Callback invoked after a config update with the set of changed fields.
-    pub on_updated: Option<&'static (dyn Fn(C::ChangedSet) + Send)>,
+    /// Channel sender for notifying config changes.
+    pub notify: DynamicSender<'static, C::ChangedSet>,
     /// Whether to serve captive-portal redirects on this handler.
     #[cfg(feature = "captive")]
     pub captive: bool,
@@ -153,15 +152,8 @@ where
             set: parse_set_param(full_path),
         };
         let mut buf = [0u8; CONFIG_GROUP_JSON_BUF_SIZE];
-        let result = handle_config_group(
-            self.config,
-            self.io,
-            group,
-            query,
-            &mut buf,
-            self.on_updated,
-        )
-        .await;
+        let result =
+            handle_config_group(self.config, self.io, group, query, &mut buf, self.notify).await;
         match result {
             ConfigGroupResult::Json(json) => send_json(conn, &json).await,
             ConfigGroupResult::Err(status, msg) => send_text(conn, status, &msg).await,
@@ -186,18 +178,16 @@ where
                             error!("http: config store failed");
                             return send_text(conn, 500, "").await;
                         }
-                        if let Some(f) = self.on_updated {
-                            f(changed);
-                        }
+                        let _ = self.notify.try_send(changed);
                     }
-                    send_text_string(conn, 200, set_value).await
+                    send_text(conn, 200, &set_value).await
                 }
                 Ok(None) => send_text(conn, 400, "Invalid key or value").await,
                 Err(_) => send_text(conn, 400, "Invalid key or value").await,
             }
         } else {
             match crate::config_storage::ConfigGet::get(&*self.config.lock().await, field) {
-                Some(value) => send_text_string(conn, 200, value).await,
+                Some(value) => send_text(conn, 200, &value).await,
                 None => send_text(conn, 404, "").await,
             }
         }

@@ -22,14 +22,10 @@ struct ApiField {
 
 /// All values parsed from struct-level attributes on the annotated config struct.
 struct StructAttrs {
-    /// Whether `#[config_server(...)]` was present at all (needed to emit the esp block).
-    config_server_present: bool,
     /// `storage_magic = 0x...` from `#[config_server]`.
     storage_magic: Option<u32>,
     /// `storage_version = N` from `#[config_server]`.
     storage_version: Option<u32>,
-    /// Whether `#[config_notify]` was present.
-    notify_channel: bool,
     /// `cap = N` from `#[config_notify]`.
     notify_cap: Option<usize>,
 }
@@ -39,15 +35,12 @@ struct StructAttrs {
 // ---------------------------------------------------------------------------
 
 fn parse_struct_attrs(attrs: &[syn::Attribute]) -> StructAttrs {
-    let mut config_server_present = true;
     let mut storage_magic: Option<u32> = None;
     let mut storage_version: Option<u32> = None;
-    let mut notify_channel = true;
     let mut notify_cap: Option<usize> = None;
 
     for attr in attrs {
         if attr.path().is_ident("config_server") {
-            config_server_present = true;
             let _ = attr.parse_nested_meta(|meta| {
                 if meta.path.is_ident("storage_magic") {
                     storage_magic = try_parse_lit_int(&meta);
@@ -59,7 +52,6 @@ fn parse_struct_attrs(attrs: &[syn::Attribute]) -> StructAttrs {
                 Ok(())
             });
         } else if attr.path().is_ident("config_notify") {
-            notify_channel = true;
             if let syn::Meta::List(_) = &attr.meta {
                 let _ = attr.parse_nested_meta(|meta| {
                     if meta.path.is_ident("cap") {
@@ -74,10 +66,8 @@ fn parse_struct_attrs(attrs: &[syn::Attribute]) -> StructAttrs {
     }
 
     StructAttrs {
-        config_server_present,
         storage_magic,
         storage_version,
-        notify_channel,
         notify_cap,
     }
 }
@@ -377,10 +367,6 @@ fn gen_set_field_arms(pages: &[(String, Vec<ApiField>)]) -> Vec<TokenStream> {
 // ---------------------------------------------------------------------------
 
 fn gen_notify_channel(attrs: &StructAttrs, num_pages: usize) -> TokenStream {
-    if !attrs.notify_channel {
-        return quote! {};
-    }
-
     let cap_val = attrs.notify_cap.unwrap_or(num_pages);
     let cap_lit = proc_macro2::Literal::usize_unsuffixed(cap_val);
 
@@ -393,13 +379,6 @@ fn gen_notify_channel(attrs: &StructAttrs, num_pages: usize) -> TokenStream {
         pub type ConfigUpdateReceiver = &'static ConfigUpdateChannel;
         static CONFIG_UPDATE_CHANNEL: static_cell::StaticCell<ConfigUpdateChannel> =
             static_cell::StaticCell::new();
-        static mut CONFIG_UPDATE_CHANNEL_REF: Option<&'static ConfigUpdateChannel> = None;
-
-        fn config_update_notify(changed: enumset::EnumSet<ConfigChange>) {
-            if let Some(ch) = unsafe { CONFIG_UPDATE_CHANNEL_REF } {
-                let _ = ch.try_send(changed);
-            }
-        }
     }
 }
 
@@ -410,14 +389,8 @@ fn gen_notify_channel(attrs: &StructAttrs, num_pages: usize) -> TokenStream {
 fn gen_config_server_impl(
     name: &syn::Ident,
     attrs: &StructAttrs,
-    on_updated_body: &TokenStream,
-    init_channel_ret_type: &TokenStream,
-    init_channel_body: &TokenStream,
+    init_notify_body: &TokenStream,
 ) -> TokenStream {
-    if !attrs.config_server_present {
-        return quote! {};
-    }
-
     let storage_magic_val = attrs.storage_magic.unwrap_or(0x4255_aa42);
     let storage_version_val = attrs.storage_version.unwrap_or(1);
     let storage_magic_lit = proc_macro2::Literal::u32_unsuffixed(storage_magic_val);
@@ -425,7 +398,7 @@ fn gen_config_server_impl(
 
     quote! {
         impl wifi_caddy::config_storage::ConfigServer for #name {
-            type UpdateReceiver = #init_channel_ret_type;
+            type UpdateReceiver = ConfigUpdateReceiver;
 
             fn storage_params() -> wifi_caddy::ConfigStorageParams {
                 wifi_caddy::ConfigStorageParams {
@@ -434,14 +407,14 @@ fn gen_config_server_impl(
                 }
             }
 
-            fn on_updated() -> Option<&'static (dyn Fn(
-                <Self as wifi_caddy::config_storage::ConfigApi>::ChangedSet,
-            ) + Send)> {
-                #on_updated_body
-            }
-
-            fn init_update_channel() -> Self::UpdateReceiver {
-                #init_channel_body
+            fn init_notify() -> (
+                Self::UpdateReceiver,
+                embassy_sync::channel::DynamicSender<
+                    'static,
+                    <Self as wifi_caddy::config_storage::ConfigApi>::ChangedSet,
+                >,
+            ) {
+                #init_notify_body
             }
         }
     }
@@ -459,13 +432,12 @@ fn gen_config_server_impl(
 /// from `#[config_store]`, `notify = "Wifi"` or `notify_group = "wifi"` add a `ConfigChange` variant.
 ///
 /// Emits: per-page DTOs (e.g. `MainConfig`) for JSON, `ConfigChange` enum, `ConfigApi` impl;
-/// the channel types and `config_update_notify` (private);
-/// `impl ConfigServer` with storage params, update callback, and
-/// channel initialization (both emitted by default; opt out not supported).
+/// channel types; `impl ConfigServer` with storage params and `init_notify`
+/// (both emitted by default; opt out not supported).
 ///
 /// All generated code references only `wifi_caddy::*` — no platform-specific types.
 /// Platform crates (e.g. `esp-wifi-caddy`) use the `ConfigServer` trait to access
-/// storage params, notify callbacks, and channel initialization.
+/// storage params and the notify channel via `init_notify`.
 pub fn derive_config_api_impl(input: &DeriveInput) -> TokenStream {
     let name = &input.ident;
 
@@ -493,32 +465,13 @@ pub fn derive_config_api_impl(input: &DeriveInput) -> TokenStream {
     let set_field_arms = gen_set_field_arms(&pages);
     let notify_channel_block = gen_notify_channel(&attrs, pages.len());
 
-    let on_updated_body = if attrs.notify_channel {
-        quote! { Some(&config_update_notify) }
-    } else {
-        quote! { None }
+    let init_notify_body = quote! {
+        let ch = CONFIG_UPDATE_CHANNEL.init(ConfigUpdateChannel::new());
+        let sender = embassy_sync::channel::DynamicSender::from(ch.sender());
+        (ch, sender)
     };
 
-    let (init_channel_ret_type, init_channel_body) = if attrs.notify_channel {
-        (
-            quote! { ConfigUpdateReceiver },
-            quote! {
-                let channel_ref = CONFIG_UPDATE_CHANNEL.init(ConfigUpdateChannel::new());
-                unsafe { CONFIG_UPDATE_CHANNEL_REF = Some(channel_ref) };
-                channel_ref
-            },
-        )
-    } else {
-        (quote! { () }, quote! { () })
-    };
-
-    let config_server_impl = gen_config_server_impl(
-        name,
-        &attrs,
-        &on_updated_body,
-        &init_channel_ret_type,
-        &init_channel_body,
-    );
+    let config_server_impl = gen_config_server_impl(name, &attrs, &init_notify_body);
 
     let default_err = quote! { _ => Err(wifi_caddy::config_storage::ConfigError::InvalidData) };
 

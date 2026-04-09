@@ -11,6 +11,7 @@ use esp_bootloader_esp_idf::partitions;
 use embassy_executor::Spawner;
 use embassy_net::Stack;
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
+use embassy_sync::channel::DynamicSender;
 use embassy_sync::mutex::Mutex;
 use esp_hal::peripherals::WIFI;
 use esp_storage::FlashStorage;
@@ -26,6 +27,7 @@ pub async fn run_inner<C, F>(
     wifi: WIFI<'static>,
     flash: FlashStorage<'static>,
     partition_range: Range<u32>,
+    notify: DynamicSender<'static, C::ChangedSet>,
     spawn_workers: F,
 ) -> Result<(WifiStacks, WifiCommandSender, ConfigHandle<C>), wifi_caddy::config_storage::ConfigError>
 where
@@ -37,11 +39,10 @@ where
         Stack<'static>,
         &'static Mutex<CriticalSectionRawMutex, C>,
         &'static Mutex<CriticalSectionRawMutex, FlashConfigStorage<'static>>,
-        Option<&'static (dyn Fn(C::ChangedSet) + Send)>,
+        DynamicSender<'static, C::ChangedSet>,
     ),
 {
     let params = C::storage_params();
-    let on_updated = C::on_updated();
 
     let mut storage = FlashConfigStorage::new(flash, partition_range);
     storage.mount(&params).await?;
@@ -57,7 +58,7 @@ where
 
     let sta_stack = wifi_stacks.sta;
     wifi_caddy::portal::start(spawner, wifi_stacks.ap, move |s, ap_stack| {
-        spawn_workers(s, ap_stack, sta_stack, config_mutex, io_mutex, on_updated);
+        spawn_workers(s, ap_stack, sta_stack, config_mutex, io_mutex, notify);
     });
 
     Ok((wifi_stacks, wifi_sender, ConfigHandle::new(config_mutex)))
@@ -84,6 +85,7 @@ pub async fn run_inner_by_partition<C, F>(
     wifi: WIFI<'static>,
     mut flash: FlashStorage<'static>,
     partition_name: &str,
+    notify: DynamicSender<'static, C::ChangedSet>,
     spawn_workers: F,
 ) -> Result<(WifiStacks, WifiCommandSender, ConfigHandle<C>), wifi_caddy::config_storage::ConfigError>
 where
@@ -95,9 +97,9 @@ where
         Stack<'static>,
         &'static Mutex<CriticalSectionRawMutex, C>,
         &'static Mutex<CriticalSectionRawMutex, FlashConfigStorage<'static>>,
-        Option<&'static (dyn Fn(C::ChangedSet) + Send)>,
+        DynamicSender<'static, C::ChangedSet>,
     ),
 {
     let partition_range = resolve_partition_range(&mut flash, partition_name)?;
-    run_inner::<C, F>(spawner, wifi, flash, partition_range, spawn_workers).await
+    run_inner::<C, F>(spawner, wifi, flash, partition_range, notify, spawn_workers).await
 }
