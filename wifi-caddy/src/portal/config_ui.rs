@@ -155,8 +155,8 @@ where
         let result =
             handle_config_group(self.config, self.io, group, query, &mut buf, self.notify).await;
         match result {
-            ConfigGroupResult::Json(json) => send_json(conn, &json).await,
-            ConfigGroupResult::Err(status, msg) => send_text(conn, status, &msg).await,
+            ConfigGroupResult::Json(json) => send_json(conn, json).await,
+            ConfigGroupResult::Err(status, msg) => send_text(conn, status, msg).await,
         }
     }
 
