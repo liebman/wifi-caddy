@@ -161,23 +161,19 @@ async fn main(spawner: Spawner) {
     let mut ap_state = false;
     loop {
         button_pin.wait_for_falling_edge().await;
-        match ap_state {
-            true => {
-                info!("AP down");
-                wifi_sender
-                    .send(esp_wifi_caddy::WifiCaddyCommand::APDown)
-                    .await;
-                ap_state = false;
-            }
-            false => {
-                info!("AP up");
-                wifi_sender
-                    .send(esp_wifi_caddy::WifiCaddyCommand::APUp(
-                        "wifi-example-".to_string(),
-                    ))
-                    .await;
-                ap_state = true;
-            }
+        if ap_state {
+            info!("AP down");
+            wifi_sender
+                .send(esp_wifi_caddy::WifiCaddyCommand::APDown)
+                .await;
+        } else {
+            info!("AP up");
+            wifi_sender
+                .send(esp_wifi_caddy::WifiCaddyCommand::APUp(
+                    "wifi-example-".to_string(),
+                ))
+                .await;
         }
+        ap_state = !ap_state;
     }
 }

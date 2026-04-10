@@ -1,7 +1,5 @@
 //! Embassy + edge-http portal: AP DHCP, optional DNS, HTTP server loop.
 
-extern crate alloc;
-
 #[cfg(feature = "captive")]
 pub(crate) mod captive;
 pub mod config_group;
