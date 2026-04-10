@@ -8,8 +8,8 @@ extern crate alloc;
 use alloc::string::String;
 
 use embassy_executor::Spawner;
-use embassy_futures::select::Either;
-use embassy_futures::select::select;
+use embassy_futures::select::Either3;
+use embassy_futures::select::select3;
 use embassy_net::Ipv4Address;
 use embassy_net::Ipv4Cidr;
 use embassy_net::Runner;
@@ -19,6 +19,7 @@ use embassy_net::StaticConfigV4;
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::channel::{Channel, Receiver, Sender};
 use embassy_time::Duration;
+use embassy_time::Instant;
 use embassy_time::Timer;
 use enumset::EnumSet;
 use esp_hal::peripherals::WIFI;
@@ -173,6 +174,13 @@ pub async fn init(spawner: &Spawner, wifi: WIFI<'static>) -> (WifiStacks, WifiCo
     )
 }
 
+async fn reconnect_timer(at: Option<Instant>) {
+    match at {
+        Some(t) => Timer::at(t).await,
+        None => core::future::pending().await,
+    }
+}
+
 struct WifiRunner {
     controller: WifiController<'static>,
     ap_up: bool,
@@ -181,6 +189,7 @@ struct WifiRunner {
     ssid: String,
     pass: String,
     wifi_commands: WifiCommandReceiver,
+    reconnect_at: Option<Instant>,
 }
 
 impl WifiRunner {
@@ -197,6 +206,7 @@ impl WifiRunner {
             ssid: String::new(),
             pass: String::new(),
             wifi_commands,
+            reconnect_at: None,
         }
     }
 
@@ -262,23 +272,26 @@ impl WifiRunner {
         }
     }
 
-    async fn try_connect_sta(&mut self) {
+    /// Attempt STA connection. Returns `true` on success or if already
+    /// connected / no SSID configured. Returns `false` on failure (caller
+    /// should schedule a retry via `reconnect_at`).
+    async fn try_connect_sta(&mut self) -> bool {
         if self.ssid.is_empty() {
-            return;
+            return true;
         }
         let state = esp_radio::wifi::sta_state();
         if state == WifiStaState::Connected {
-            return;
+            return true;
         }
         debug!("wifi: connection task: connecting to wifi");
         match self.controller.connect_async().await {
-            Ok(_) => debug!("wifi: connection task: STA connected to wifi!"),
+            Ok(_) => {
+                debug!("wifi: connection task: STA connected!");
+                true
+            }
             Err(e) => {
-                error!(
-                    "wifi: connection task: STA failed to connect to wifi: {:?}",
-                    e
-                );
-                Timer::after(Duration::from_millis(STA_RECONNECT_DELAY_MS)).await
+                error!("wifi: connection task: STA connect failed: {:?}", e);
+                false
             }
         }
     }
@@ -286,7 +299,9 @@ impl WifiRunner {
     async fn sync_state(&mut self) {
         let config = self.current_config();
         self.ensure_wifi_started_with_config(&config).await;
-        self.try_connect_sta().await;
+        if !self.try_connect_sta().await {
+            self.schedule_reconnect();
+        }
     }
 
     async fn handle_command(&mut self, cmd: WifiCaddyCommand) {
@@ -304,11 +319,12 @@ impl WifiRunner {
                 info!("wifi: connection task: StaUp command");
                 self.ssid = new_ssid;
                 self.pass = new_pass;
+                self.reconnect_at = None;
             }
         }
     }
 
-    async fn handle_wifi_events<I>(&mut self, events: I)
+    fn handle_wifi_events<I>(&mut self, events: I)
     where
         I: IntoIterator<Item = WifiEvent>,
     {
@@ -316,14 +332,14 @@ impl WifiRunner {
             match event {
                 WifiEvent::StaConnected => {
                     info!("wifi: connection task: StaConnected");
+                    self.reconnect_at = None;
                 }
                 WifiEvent::StaDisconnected => {
                     warn!(
-                        "wifi: connection task: StaDisconnected - reconnect after {} seconds",
+                        "wifi: connection task: StaDisconnected - reconnect in {}s",
                         STA_RECONNECT_DELAY_MS / 1000
                     );
-                    Timer::after(Duration::from_millis(STA_RECONNECT_DELAY_MS)).await;
-                    self.try_connect_sta().await;
+                    self.schedule_reconnect();
                 }
                 _ => {
                     debug!("wifi: connection task: event: {:?}", event);
@@ -332,24 +348,36 @@ impl WifiRunner {
         }
     }
 
+    fn schedule_reconnect(&mut self) {
+        self.reconnect_at =
+            Some(Instant::now() + Duration::from_millis(STA_RECONNECT_DELAY_MS));
+    }
+
     async fn run(&mut self) {
         debug!("start connection task");
         self.sync_state().await;
 
         loop {
-            match select(
+            match select3(
                 self.wifi_commands.receive(),
                 self.controller.wait_for_events(EnumSet::all(), false),
+                reconnect_timer(self.reconnect_at),
             )
             .await
             {
-                Either::First(cmd) => {
+                Either3::First(cmd) => {
                     self.handle_command(cmd).await;
                     self.sync_state().await;
                 }
-                Either::Second(events) => {
+                Either3::Second(events) => {
                     debug!("wifi: connection task: events: {:?}", events);
-                    self.handle_wifi_events(events).await;
+                    self.handle_wifi_events(events);
+                }
+                Either3::Third(_) => {
+                    self.reconnect_at = None;
+                    if !self.try_connect_sta().await {
+                        self.schedule_reconnect();
+                    }
                 }
             };
         }
