@@ -177,9 +177,7 @@ where
                 match cfg.set_field(field, &set_value) {
                     Ok(Some(changed)) => {
                         if !changed.is_empty() {
-                            if let Err(_err) =
-                                cfg.store_to(&mut *self.io.lock().await).await
-                            {
+                            if let Err(_err) = cfg.store_to(&mut *self.io.lock().await).await {
                                 error!("http: config store failed");
                                 500u16
                             } else {

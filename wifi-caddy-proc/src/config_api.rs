@@ -245,8 +245,7 @@ fn gen_dto_and_group_arms(
                 let setter = format_ident!("set_{}", i);
                 let field_ty = &f.ty;
                 let variant_name = f.notify.as_deref().unwrap_or("Changed");
-                let variant_ident =
-                    syn::Ident::new(variant_name, proc_macro2::Span::call_site());
+                let variant_ident = syn::Ident::new(variant_name, proc_macro2::Span::call_site());
                 let insert_line = quote! { changed.insert(ConfigChange::#variant_ident); };
 
                 if f.is_password {

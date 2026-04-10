@@ -28,7 +28,10 @@ pub async fn run_inner<C, F>(
     partition_range: Range<u32>,
     notify: DynamicSender<'static, C::ChangedSet>,
     spawn_workers: F,
-) -> Result<(WifiStacks, WifiCommandSender, wifi_caddy::ConfigHandle<C>), wifi_caddy::config_storage::ConfigError>
+) -> Result<
+    (WifiStacks, WifiCommandSender, wifi_caddy::ConfigHandle<C>),
+    wifi_caddy::config_storage::ConfigError,
+>
 where
     C: ConfigServer + Send + 'static,
     C::ChangedSet: Send,
@@ -86,7 +89,10 @@ pub async fn run_inner_by_partition<C, F>(
     partition_name: &str,
     notify: DynamicSender<'static, C::ChangedSet>,
     spawn_workers: F,
-) -> Result<(WifiStacks, WifiCommandSender, wifi_caddy::ConfigHandle<C>), wifi_caddy::config_storage::ConfigError>
+) -> Result<
+    (WifiStacks, WifiCommandSender, wifi_caddy::ConfigHandle<C>),
+    wifi_caddy::config_storage::ConfigError,
+>
 where
     C: ConfigServer + Send + 'static,
     C::ChangedSet: Send,

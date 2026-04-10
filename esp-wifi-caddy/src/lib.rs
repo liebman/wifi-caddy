@@ -349,8 +349,7 @@ impl WifiRunner {
     }
 
     fn schedule_reconnect(&mut self) {
-        self.reconnect_at =
-            Some(Instant::now() + Duration::from_millis(STA_RECONNECT_DELAY_MS));
+        self.reconnect_at = Some(Instant::now() + Duration::from_millis(STA_RECONNECT_DELAY_MS));
     }
 
     async fn run(&mut self) {
