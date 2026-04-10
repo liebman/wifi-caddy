@@ -60,6 +60,7 @@ pub use wifi::start_wifi;
 pub use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex as __CriticalSectionRawMutex;
 #[doc(hidden)]
 pub use embassy_sync::mutex::Mutex as __Mutex;
+pub use wifi_caddy::Error;
 
 /// Macro to create a static cell and write a value into it (returns reference).
 #[macro_export]
@@ -455,7 +456,7 @@ macro_rules! wifi_init {
                     $crate::__Mutex::new(storage)
                 );
 
-                let (stacks, sender) = $crate::start_wifi::<$Config, _>(
+                match $crate::start_wifi::<$Config, _>(
                     $spawner,
                     $wifi,
                     config_mutex,
@@ -463,9 +464,11 @@ macro_rules! wifi_init {
                     notify_sender,
                     __spawn_config_http_workers,
                 )
-                .await;
-
-                Ok((stacks, sender, config_mutex, config_rx))
+                .await
+                {
+                    Err(e) => Err(e),
+                    Ok((stacks, sender)) => Ok((stacks, sender, config_mutex, config_rx)),
+                }
             }
         }
     }};
@@ -512,7 +515,7 @@ macro_rules! wifi_init_raw {
                     $crate::__Mutex::new(storage)
                 );
 
-                let (stacks, sender) = $crate::start_wifi::<$Config, _>(
+                match $crate::start_wifi::<$Config, _>(
                     $spawner,
                     $wifi,
                     config_mutex,
@@ -520,9 +523,11 @@ macro_rules! wifi_init_raw {
                     notify_sender,
                     __spawn_config_http_workers,
                 )
-                .await;
-
-                Ok((stacks, sender, config_mutex, config_rx))
+                .await
+                {
+                    Err(e) => Err(e),
+                    Ok((stacks, sender)) => Ok((stacks, sender, config_mutex, config_rx)),
+                }
             }
         }
     }};

@@ -19,7 +19,7 @@ pub async fn start_wifi<C, F>(
     io_mutex: &'static Mutex<CriticalSectionRawMutex, FlashConfigStorage<'static>>,
     notify: DynamicSender<'static, C::ChangedSet>,
     spawn_workers: F,
-) -> (WifiStacks, WifiCommandSender)
+) -> Result<(WifiStacks, WifiCommandSender), wifi_caddy::Error>
 where
     C: ConfigServer + Send + 'static,
     C::ChangedSet: Send,
@@ -38,7 +38,7 @@ where
     let sta_stack = wifi_stacks.sta;
     wifi_caddy::portal::start(spawner, wifi_stacks.ap, move |s, ap_stack| {
         spawn_workers(s, ap_stack, sta_stack, config_mutex, io_mutex, notify);
-    });
+    })?;
 
-    (wifi_stacks, wifi_sender)
+    Ok((wifi_stacks, wifi_sender))
 }

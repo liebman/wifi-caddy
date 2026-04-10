@@ -37,3 +37,20 @@ pub type ConfigHandle<C> = &'static embassy_sync::mutex::Mutex<
     embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex,
     C,
 >;
+
+/// Unified error type for wifi-caddy initialization and portal startup.
+#[derive(Debug)]
+pub enum Error {
+    /// Flash mount, config load, serialization, or partition lookup failed.
+    Config(config_storage::ConfigError),
+    /// Failed to spawn the DHCP server task.
+    SpawnDhcp,
+    /// Failed to spawn the DNS server task.
+    SpawnDns,
+}
+
+impl From<config_storage::ConfigError> for Error {
+    fn from(e: config_storage::ConfigError) -> Self {
+        Error::Config(e)
+    }
+}

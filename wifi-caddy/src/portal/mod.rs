@@ -93,14 +93,23 @@ pub async fn serve_loop_debug<H: Handler>(stack: Stack<'static>, handler: H) {
 
 /// Spawns DHCP, optional DNS (if feature `captive`), then calls
 /// `spawn_workers(spawner, ap_stack)` so the application can spawn its own HTTP server task.
-pub fn start<F>(spawner: Spawner, ap_stack: Stack<'static>, spawn_workers: F)
+pub fn start<F>(
+    spawner: Spawner,
+    ap_stack: Stack<'static>,
+    spawn_workers: F,
+) -> Result<(), crate::Error>
 where
     F: FnOnce(Spawner, Stack<'static>),
 {
-    spawner.spawn(dhcp::run(ap_stack)).unwrap();
+    spawner
+        .spawn(dhcp::run(ap_stack))
+        .map_err(|_| crate::Error::SpawnDhcp)?;
 
     #[cfg(feature = "captive")]
-    spawner.spawn(dns::run(ap_stack)).unwrap();
+    spawner
+        .spawn(dns::run(ap_stack))
+        .map_err(|_| crate::Error::SpawnDns)?;
 
     spawn_workers(spawner, ap_stack);
+    Ok(())
 }

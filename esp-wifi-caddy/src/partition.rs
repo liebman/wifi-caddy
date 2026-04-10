@@ -13,7 +13,7 @@ use crate::flash_config::FlashConfigStorage;
 pub async fn mount_and_load<C: ConfigServer>(
     flash: FlashStorage<'static>,
     partition_range: Range<u32>,
-) -> Result<(C, FlashConfigStorage<'static>), wifi_caddy::config_storage::ConfigError> {
+) -> Result<(C, FlashConfigStorage<'static>), wifi_caddy::Error> {
     let params = C::storage_params();
     let mut storage = FlashConfigStorage::new(flash, partition_range);
     storage.mount(&params).await?;
@@ -26,7 +26,7 @@ pub async fn mount_and_load<C: ConfigServer>(
 pub async fn mount_and_load_by_partition<C: ConfigServer>(
     mut flash: FlashStorage<'static>,
     partition_name: &str,
-) -> Result<(C, FlashConfigStorage<'static>), wifi_caddy::config_storage::ConfigError> {
+) -> Result<(C, FlashConfigStorage<'static>), wifi_caddy::Error> {
     let range = resolve_partition_range(&mut flash, partition_name)?;
     mount_and_load::<C>(flash, range).await
 }
@@ -35,7 +35,7 @@ pub async fn mount_and_load_by_partition<C: ConfigServer>(
 pub fn resolve_partition_range(
     flash: &mut FlashStorage<'static>,
     partition_name: &str,
-) -> Result<Range<u32>, wifi_caddy::config_storage::ConfigError> {
+) -> Result<Range<u32>, wifi_caddy::Error> {
     let mut buffer = [0u8; partitions::PARTITION_TABLE_MAX_LEN];
     let partition_table = partitions::read_partition_table(flash, &mut buffer)
         .map_err(|_| wifi_caddy::config_storage::ConfigError::Backend)?;
