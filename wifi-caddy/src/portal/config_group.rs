@@ -40,8 +40,9 @@ where
     C: ConfigApi + ConfigLoadStore,
     S: ConfigStorage,
 {
+    let mut config_guard = config.lock().await;
+
     if let Some(ref set_json) = query.set {
-        let mut config_guard = config.lock().await;
         let changed = match config_guard.set_group_json(group, set_json) {
             Ok(c) => c,
             Err(e) => {
@@ -63,11 +64,15 @@ where
                 );
                 return ConfigGroupResult::Err(500, "store failed");
             }
-            let _ = notify.try_send(changed);
+            if let Err(_) = notify.try_send(changed) {
+                error!(
+                    "handle_config_group: notify.try_send failed for group {}",
+                    group
+                );
+            }
         }
     }
 
-    let config_guard = config.lock().await;
     match config_guard.get_group_json(group, buf) {
         Ok(len) => {
             let json = core::str::from_utf8(&buf[..len]).unwrap_or("");
