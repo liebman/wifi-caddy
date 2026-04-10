@@ -19,6 +19,7 @@ use edge_nal::TcpBind;
 use edge_nal_embassy::{Tcp, TcpBuffers};
 use embassy_executor::Spawner;
 use embassy_net::Stack;
+use static_cell::StaticCell;
 
 include!(concat!(env!("OUT_DIR"), "/server_tuning.rs"));
 
@@ -37,8 +38,10 @@ pub async fn serve_loop<H: Handler>(stack: Stack<'static>, handler: H) {
         "serve_loop: KEEPALIVE_TIMEOUT_MS = {}",
         KEEPALIVE_TIMEOUT_MS
     );
-    let tcp_buffers = TcpBuffers::<{ HANDLER_TASKS }, { TCP_BUF_SIZE }, { TCP_BUF_SIZE }>::new();
-    let tcp = Tcp::new(stack, &tcp_buffers);
+    static TCP_BUF: StaticCell<TcpBuffers<{ HANDLER_TASKS }, { TCP_BUF_SIZE }, { TCP_BUF_SIZE }>> =
+        StaticCell::new();
+    let tcp_buffers = TCP_BUF.uninit().write(TcpBuffers::new());
+    let tcp = Tcp::new(stack, tcp_buffers);
 
     let acceptor = match tcp
         .bind(SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::UNSPECIFIED, 80)))
@@ -63,8 +66,10 @@ pub async fn serve_loop<H: Handler>(stack: Stack<'static>, handler: H) {
 /// Debug server: same as `serve_loop` but single concurrent handler.
 #[cfg(feature = "debug-server")]
 pub async fn serve_loop_debug<H: Handler>(stack: Stack<'static>, handler: H) {
-    let tcp_buffers = TcpBuffers::<1, { TCP_BUF_SIZE }, { TCP_BUF_SIZE }>::new();
-    let tcp = Tcp::new(stack, &tcp_buffers);
+    static TCP_BUF_DBG: StaticCell<TcpBuffers<1, { TCP_BUF_SIZE }, { TCP_BUF_SIZE }>> =
+        StaticCell::new();
+    let tcp_buffers = TCP_BUF_DBG.uninit().write(TcpBuffers::new());
+    let tcp = Tcp::new(stack, tcp_buffers);
 
     let acceptor = match tcp
         .bind(SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::UNSPECIFIED, 80)))
