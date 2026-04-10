@@ -170,24 +170,42 @@ where
         T: Read + Write,
     {
         if let Some(set_value) = parse_set_param(full_path) {
-            let mut cfg = self.config.lock().await;
-            match cfg.set_field(field, &set_value) {
-                Ok(Some(changed)) => {
-                    if !changed.is_empty() {
-                        if let Err(_err) = cfg.store_to(&mut *self.io.lock().await).await {
-                            error!("http: config store failed");
-                            return send_text(conn, 500, "").await;
+            // Perform mutation + persist under the lock, capture the HTTP status,
+            // then drop the guard BEFORE doing network I/O.
+            let status = {
+                let mut cfg = self.config.lock().await;
+                match cfg.set_field(field, &set_value) {
+                    Ok(Some(changed)) => {
+                        if !changed.is_empty() {
+                            if let Err(_err) =
+                                cfg.store_to(&mut *self.io.lock().await).await
+                            {
+                                error!("http: config store failed");
+                                500u16
+                            } else {
+                                let _ = self.notify.try_send(changed);
+                                200
+                            }
+                        } else {
+                            200
                         }
-                        let _ = self.notify.try_send(changed);
                     }
-                    send_text(conn, 200, &set_value).await
+                    Ok(None) | Err(_) => 400,
                 }
-                Ok(None) => send_text(conn, 400, "Invalid key or value").await,
-                Err(_) => send_text(conn, 400, "Invalid key or value").await,
+            };
+            match status {
+                200 => send_text(conn, 200, &set_value).await,
+                500 => send_text(conn, 500, "").await,
+                _ => send_text(conn, 400, "Invalid key or value").await,
             }
         } else {
-            match crate::config_storage::ConfigGet::get(&*self.config.lock().await, field) {
-                Some(value) => send_text(conn, 200, &value).await,
+            // Acquire lock, read the value, drop guard before network I/O.
+            let value = {
+                let guard = self.config.lock().await;
+                crate::config_storage::ConfigGet::get(&*guard, field)
+            };
+            match value {
+                Some(v) => send_text(conn, 200, &v).await,
                 None => send_text(conn, 404, "").await,
             }
         }
