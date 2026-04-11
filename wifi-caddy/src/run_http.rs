@@ -54,16 +54,19 @@ pub async fn run_http_debug_loop<C, S>(
     S: ConfigStorage + Send,
 {
     info!("Debug HTTP server: waiting for STA IP...");
-    loop {
+    let cfg = loop {
+        stack.wait_config_up().await;
         if let Some(cfg) = stack.config_v4() {
-            info!(
-                "Debug HTTP server started at http://{}",
-                cfg.address.address()
-            );
-            break;
+            break cfg;
         }
+        warn!("Debug HTTP server: STA IP not available, waiting...");
         embassy_time::Timer::after(embassy_time::Duration::from_millis(500)).await;
-    }
+    };
+
+    info!(
+        "Debug HTTP server started at http://{}",
+        cfg.address.address()
+    );
 
     let handler = ConfigHandler {
         config,
