@@ -74,7 +74,7 @@ macro_rules! mk_static {
 }
 
 /// Command to control WiFi caddy (all configuration is via commands).
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub enum WifiCaddyCommand {
     /// Enable AP mode with given SSID prefix (full SSID = prefix + MAC).
     APUp(String),
@@ -84,16 +84,50 @@ pub enum WifiCaddyCommand {
     StaUp(String, String),
 }
 
+impl core::fmt::Debug for WifiCaddyCommand {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        match self {
+            Self::APUp(prefix) => f.debug_tuple("APUp").field(prefix).finish(),
+            Self::APDown => f.write_str("APDown"),
+            Self::StaUp(ssid, pass) => f
+                .debug_tuple("StaUp")
+                .field(ssid)
+                .field(&Redact(pass)) // Use redaction helper
+                .finish(),
+        }
+    }
+}
+
 #[cfg(feature = "defmt")]
 impl defmt::Format for WifiCaddyCommand {
     fn format(&self, f: defmt::Formatter) {
-        use defmt::write;
         match self {
-            WifiCaddyCommand::APUp(prefix) => write!(f, "APUp({})", prefix.as_str()),
-            WifiCaddyCommand::APDown => write!(f, "APDown"),
-            WifiCaddyCommand::StaUp(ssid, pass) => {
-                write!(f, "StaUp({}, {})", ssid.as_str(), pass.as_str())
+            Self::APUp(prefix) => defmt::write!(f, "APUp({})", prefix.as_str()),
+            Self::APDown => defmt::write!(f, "APDown"),
+            Self::StaUp(ssid, pass) => {
+                // defmt can take the Redact helper directly
+                defmt::write!(f, "StaUp({}, {})", ssid.as_str(), Redact(pass))
             }
+        }
+    }
+}
+
+/// A zero-cost internal helper for redacting strings during formatting
+struct Redact<'a>(&'a str);
+impl core::fmt::Debug for Redact<'_> {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        for _ in self.0.chars() {
+            f.write_str("*")?;
+        }
+        Ok(())
+    }
+}
+
+#[cfg(feature = "defmt")]
+impl defmt::Format for Redact<'_> {
+    fn format(&self, f: defmt::Formatter) {
+        for _ in self.0.chars() {
+            defmt::write!(f, "*");
         }
     }
 }
