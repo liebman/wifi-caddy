@@ -30,14 +30,14 @@ where
         &'static Mutex<CriticalSectionRawMutex, C>,
         &'static Mutex<CriticalSectionRawMutex, FlashConfigStorage<'static>>,
         DynamicSender<'static, C::ChangedSet>,
-    ),
+    ) -> Result<(), wifi_caddy::Error>,
 {
-    let (wifi_stacks, wifi_sender) = init(&spawner, wifi).await;
+    let (wifi_stacks, wifi_sender) = init(&spawner, wifi).await?;
     debug!("wifi initialized (STA + AP)");
 
     let sta_stack = wifi_stacks.sta;
     wifi_caddy::portal::start(spawner, wifi_stacks.ap, move |s, ap_stack| {
-        spawn_workers(s, ap_stack, sta_stack, config_mutex, io_mutex, notify);
+        spawn_workers(s, ap_stack, sta_stack, config_mutex, io_mutex, notify)
     })?;
 
     Ok((wifi_stacks, wifi_sender))

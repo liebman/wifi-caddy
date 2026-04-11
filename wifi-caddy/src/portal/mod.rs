@@ -97,7 +97,7 @@ pub fn start<F>(
     spawn_workers: F,
 ) -> Result<(), crate::Error>
 where
-    F: FnOnce(Spawner, Stack<'static>),
+    F: FnOnce(Spawner, Stack<'static>) -> Result<(), crate::Error>,
 {
     spawner
         .spawn(dhcp::run(ap_stack))
@@ -108,6 +108,6 @@ where
         .spawn(dns::run(ap_stack))
         .map_err(|_| crate::Error::SpawnDns)?;
 
-    spawn_workers(spawner, ap_stack);
+    spawn_workers(spawner, ap_stack)?;
     Ok(())
 }

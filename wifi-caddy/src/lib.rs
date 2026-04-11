@@ -47,6 +47,10 @@ pub enum Error {
     SpawnDhcp,
     /// Failed to spawn the DNS server task.
     SpawnDns,
+    /// WiFi radio or controller initialization failed.
+    WifiInit,
+    /// Failed to spawn an HTTP config worker task.
+    SpawnHttpWorker,
 }
 
 impl From<config_storage::ConfigError> for Error {

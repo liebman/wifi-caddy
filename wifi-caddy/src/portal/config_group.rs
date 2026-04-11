@@ -64,7 +64,7 @@ where
                 );
                 return ConfigGroupResult::Err(500, "store failed");
             }
-            if let Err(_) = notify.try_send(changed) {
+            if notify.try_send(changed).is_err() {
                 error!(
                     "handle_config_group: notify.try_send failed for group {}",
                     group

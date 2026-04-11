@@ -68,12 +68,16 @@ impl<'d> FlashConfigStorage<'d> {
             Ok(None) => {
                 error!("Config magic not found");
                 self.format(params).await?;
-                self.get_value::<u32>(MAGIC_KEY_U64).await?.unwrap()
+                self.get_value::<u32>(MAGIC_KEY_U64)
+                    .await?
+                    .ok_or(ConfigError::Backend)?
             }
             Err(_) => {
                 error!("Config format migration needed");
                 self.format(params).await?;
-                self.get_value::<u32>(MAGIC_KEY_U64).await?.unwrap()
+                self.get_value::<u32>(MAGIC_KEY_U64)
+                    .await?
+                    .ok_or(ConfigError::Backend)?
             }
         };
         let version = self.get_value::<u32>(FORMAT_VERSION_KEY_U64).await?;
@@ -133,10 +137,11 @@ impl ConfigStorage for FlashConfigStorage<'_> {
             .await
             .map_err(|_| ConfigError::Backend)?;
 
-        if let Some(ref existing) = current {
-            if existing.len() == bytes.len() && existing.as_slice() == bytes {
-                return Ok(());
-            }
+        if let Some(ref existing) = current
+            && existing.len() == bytes.len()
+            && existing.as_slice() == bytes
+        {
+            return Ok(());
         }
 
         let value: Vec<u8> = bytes.to_vec();

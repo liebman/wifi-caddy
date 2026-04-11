@@ -68,7 +68,7 @@ macro_rules! mk_static {
     ($t:ty,$val:expr) => {{
         static STATIC_CELL: static_cell::StaticCell<$t> = static_cell::StaticCell::new();
         #[deny(unused_attributes)]
-        let x = STATIC_CELL.uninit().write(($val));
+        let x = STATIC_CELL.uninit().write($val);
         x
     }};
 }
@@ -132,7 +132,10 @@ pub struct WifiStacks {
 /// Returns [`WifiStacks`] (STA and AP network stacks) and a [`WifiCommandSender`]
 /// for controlling the WiFi caddy at runtime. The caddy starts idle; send
 /// [`WifiCaddyCommand::StaUp`] or [`WifiCaddyCommand::APUp`] to activate.
-pub async fn init(spawner: &Spawner, wifi: WIFI<'static>) -> (WifiStacks, WifiCommandSender) {
+pub async fn init(
+    spawner: &Spawner,
+    wifi: WIFI<'static>,
+) -> Result<(WifiStacks, WifiCommandSender), Error> {
     info!("wifi: initialize wifi");
     let wifi_commands = WIFI_COMMAND_CHANNEL.receiver();
     let sender = WIFI_COMMAND_CHANNEL.sender();
@@ -146,14 +149,18 @@ pub async fn init(spawner: &Spawner, wifi: WIFI<'static>) -> (WifiStacks, WifiCo
     let rng = Rng::new();
     let seed = (rng.random() as u64) << 32 | rng.random() as u64;
 
-    let esp_wifi_ctrl = &*mk_static!(Controller<'static>, esp_radio::init().unwrap());
+    let esp_wifi_ctrl = &*mk_static!(
+        Controller<'static>,
+        esp_radio::init().map_err(|_| Error::WifiInit)?
+    );
 
     let wifi_config = esp_radio::wifi::Config::default();
-    let (controller, interfaces) = esp_radio::wifi::new(esp_wifi_ctrl, wifi, wifi_config).unwrap();
+    let (controller, interfaces) =
+        esp_radio::wifi::new(esp_wifi_ctrl, wifi, wifi_config).map_err(|_| Error::WifiInit)?;
     let ap_interface = interfaces.ap;
     let sta_interface = interfaces.sta;
 
-    let ap_mac: [u8; 6] = ap_interface.mac_address().try_into().unwrap();
+    let ap_mac: [u8; 6] = ap_interface.mac_address();
     info!("wifi: starting network stack");
     let (sta_stack, sta_runner) = embassy_net::new(
         sta_interface,
@@ -172,13 +179,13 @@ pub async fn init(spawner: &Spawner, wifi: WIFI<'static>) -> (WifiStacks, WifiCo
         .ok();
     spawner.spawn(ap_task(ap_runner)).ok();
     spawner.spawn(sta_task(sta_runner)).ok();
-    (
+    Ok((
         WifiStacks {
             sta: sta_stack,
             ap: ap_stack,
         },
         sender,
-    )
+    ))
 }
 
 async fn reconnect_timer(at: Option<Instant>) {
@@ -263,20 +270,23 @@ impl WifiRunner {
         }
     }
 
-    async fn ensure_wifi_started_with_config(&mut self, config: &ModeConfig) {
+    async fn ensure_wifi_started_with_config(&mut self, config: &ModeConfig) -> Result<(), ()> {
         if matches!(config, ModeConfig::None) {
-            return;
+            return Ok(());
         }
         if !matches!(self.controller.is_started(), Ok(true)) {
             debug!("wifi: ensure_wifi_started_with_config: configuring wifi");
             self.apply_config(config);
             debug!("wifi: ensure_wifi_started_with_config: starting wifi");
-            self.controller.start_async().await.unwrap();
+            self.controller.start_async().await.map_err(|e| {
+                error!("wifi: failed to start controller: {:?}", e);
+            })?;
             debug!("wifi: ensure_wifi_started_with_config: started wifi!");
         } else {
             debug!("wifi: ensure_wifi_started_with_config: update wifi config");
             self.apply_config(config);
         }
+        Ok(())
     }
 
     /// Attempt STA connection. Returns `true` on success or if already
@@ -305,7 +315,10 @@ impl WifiRunner {
 
     async fn sync_state(&mut self) {
         let config = self.current_config();
-        self.ensure_wifi_started_with_config(&config).await;
+        if self.ensure_wifi_started_with_config(&config).await.is_err() {
+            self.schedule_reconnect();
+            return;
+        }
         if !self.try_connect_sta().await {
             self.schedule_reconnect();
         }
@@ -569,7 +582,7 @@ macro_rules! __wifi_init_debug_worker {
             .spawn(__config_http_worker_debug(
                 $sta_stack, $config, $io, $notify,
             ))
-            .unwrap();
+            .map_err(|_| $crate::Error::SpawnHttpWorker)?;
     };
 }
 
@@ -626,10 +639,11 @@ macro_rules! __wifi_init_workers {
                 'static,
                 <$Config as $crate::config_storage::ConfigApi>::ChangedSet,
             >,
-        ) {
+        ) -> Result<(), $crate::Error> {
             s.spawn(__config_http_worker(ap_stack, config, io, notify))
-                .unwrap();
+                .map_err(|_| $crate::Error::SpawnHttpWorker)?;
             $crate::__wifi_init_debug_worker!($Config, s, _sta_stack, config, io, notify);
+            Ok(())
         }
     };
 }
