@@ -12,14 +12,23 @@ use crate::flash_config::FlashConfigStorage;
 use crate::{WifiCommandSender, WifiStacks, init};
 
 #[doc(hidden)]
-pub async fn start_wifi<C, F>(
+pub async fn wifi_init_inner<C, R, F>(
     spawner: Spawner,
     wifi: WIFI<'static>,
     config_mutex: &'static Mutex<CriticalSectionRawMutex, C>,
     io_mutex: &'static Mutex<CriticalSectionRawMutex, FlashConfigStorage<'static>>,
+    config_rx: R,
     notify: DynamicSender<'static, C::ChangedSet>,
     spawn_workers: F,
-) -> Result<(WifiStacks, WifiCommandSender), wifi_caddy::Error>
+) -> Result<
+    (
+        WifiStacks,
+        WifiCommandSender,
+        &'static Mutex<CriticalSectionRawMutex, C>,
+        R,
+    ),
+    wifi_caddy::Error,
+>
 where
     C: ConfigServer + Send + 'static,
     C::ChangedSet: Send,
@@ -40,5 +49,5 @@ where
         spawn_workers(s, ap_stack, sta_stack, config_mutex, io_mutex, notify)
     })?;
 
-    Ok((wifi_stacks, wifi_sender))
+    Ok((wifi_stacks, wifi_sender, config_mutex, config_rx))
 }
