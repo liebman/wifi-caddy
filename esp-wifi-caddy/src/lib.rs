@@ -57,9 +57,9 @@ pub use partition::{mount_and_load, mount_and_load_by_partition};
 pub use wifi::start_wifi;
 
 #[doc(hidden)]
-pub use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex as __CriticalSectionRawMutex;
+pub use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex as _CriticalSectionRawMutex;
 #[doc(hidden)]
-pub use embassy_sync::mutex::Mutex as __Mutex;
+pub use embassy_sync::mutex::Mutex as _Mutex;
 pub use wifi_caddy::Error;
 
 /// Macro to create a static cell and write a value into it (returns reference).
@@ -480,27 +480,27 @@ async fn ap_task(mut runner: Runner<'static, WifiDevice<'static>>) {
 #[macro_export]
 macro_rules! wifi_init {
     ($Config:ty, $spawner:expr, $wifi:expr, $flash:expr, $partition:expr) => {{
-        $crate::__wifi_init_workers!($Config);
+        $crate::_wifi_init_workers!($Config);
         let (config_rx, notify_sender) =
             <$Config as $crate::config_storage::ConfigServer>::init_notify();
 
         match $crate::mount_and_load_by_partition::<$Config>($flash, $partition).await {
             Err(e) => Err(e),
             Ok((config, storage)) => {
-                let config_mutex: &'static $crate::__Mutex<$crate::__CriticalSectionRawMutex, $Config> =
+                let config_mutex: &'static $crate::_Mutex<$crate::_CriticalSectionRawMutex, $Config> =
                     $crate::mk_static!(
-                        $crate::__Mutex<$crate::__CriticalSectionRawMutex, $Config>,
-                        $crate::__Mutex::new(config)
+                        $crate::_Mutex<$crate::_CriticalSectionRawMutex, $Config>,
+                        $crate::_Mutex::new(config)
                     );
-                let io_mutex: &'static $crate::__Mutex<
-                    $crate::__CriticalSectionRawMutex,
+                let io_mutex: &'static $crate::_Mutex<
+                    $crate::_CriticalSectionRawMutex,
                     $crate::FlashConfigStorage<'static>,
                 > = $crate::mk_static!(
-                    $crate::__Mutex<
-                        $crate::__CriticalSectionRawMutex,
+                    $crate::_Mutex<
+                        $crate::_CriticalSectionRawMutex,
                         $crate::FlashConfigStorage<'static>,
                     >,
-                    $crate::__Mutex::new(storage)
+                    $crate::_Mutex::new(storage)
                 );
 
                 match $crate::start_wifi::<$Config, _>(
@@ -509,7 +509,7 @@ macro_rules! wifi_init {
                     config_mutex,
                     io_mutex,
                     notify_sender,
-                    __spawn_config_http_workers,
+                    _spawn_config_http_workers,
                 )
                 .await
                 {
@@ -539,27 +539,27 @@ macro_rules! wifi_init {
 #[macro_export]
 macro_rules! wifi_init_raw {
     ($Config:ty, $spawner:expr, $wifi:expr, $flash:expr, $range:expr) => {{
-        $crate::__wifi_init_workers!($Config);
+        $crate::_wifi_init_workers!($Config);
         let (config_rx, notify_sender) =
             <$Config as $crate::config_storage::ConfigServer>::init_notify();
 
         match $crate::mount_and_load::<$Config>($flash, $range).await {
             Err(e) => Err(e),
             Ok((config, storage)) => {
-                let config_mutex: &'static $crate::__Mutex<$crate::__CriticalSectionRawMutex, $Config> =
+                let config_mutex: &'static $crate::_Mutex<$crate::_CriticalSectionRawMutex, $Config> =
                     $crate::mk_static!(
-                        $crate::__Mutex<$crate::__CriticalSectionRawMutex, $Config>,
-                        $crate::__Mutex::new(config)
+                        $crate::_Mutex<$crate::_CriticalSectionRawMutex, $Config>,
+                        $crate::_Mutex::new(config)
                     );
-                let io_mutex: &'static $crate::__Mutex<
-                    $crate::__CriticalSectionRawMutex,
+                let io_mutex: &'static $crate::_Mutex<
+                    $crate::_CriticalSectionRawMutex,
                     $crate::FlashConfigStorage<'static>,
                 > = $crate::mk_static!(
-                    $crate::__Mutex<
-                        $crate::__CriticalSectionRawMutex,
+                    $crate::_Mutex<
+                        $crate::_CriticalSectionRawMutex,
                         $crate::FlashConfigStorage<'static>,
                     >,
-                    $crate::__Mutex::new(storage)
+                    $crate::_Mutex::new(storage)
                 );
 
                 match $crate::start_wifi::<$Config, _>(
@@ -568,7 +568,7 @@ macro_rules! wifi_init_raw {
                     config_mutex,
                     io_mutex,
                     notify_sender,
-                    __spawn_config_http_workers,
+                    _spawn_config_http_workers,
                 )
                 .await
                 {
@@ -588,10 +588,10 @@ macro_rules! wifi_init_raw {
 #[cfg(feature = "debug-server")]
 #[doc(hidden)]
 #[macro_export]
-macro_rules! __wifi_init_debug_worker {
+macro_rules! _wifi_init_debug_worker {
     ($Config:ty, $spawner:expr, $sta_stack:expr, $config:expr, $io:expr, $notify:expr) => {
         #[embassy_executor::task]
-        async fn __config_http_worker_debug(
+        async fn _config_http_worker_debug(
             stack: embassy_net::Stack<'static>,
             config: &'static embassy_sync::mutex::Mutex<
                 embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex,
@@ -613,9 +613,7 @@ macro_rules! __wifi_init_debug_worker {
         }
 
         $spawner
-            .spawn(__config_http_worker_debug(
-                $sta_stack, $config, $io, $notify,
-            ))
+            .spawn(_config_http_worker_debug($sta_stack, $config, $io, $notify))
             .map_err(|_| $crate::Error::SpawnHttpWorker)?;
     };
 }
@@ -623,7 +621,7 @@ macro_rules! __wifi_init_debug_worker {
 #[cfg(not(feature = "debug-server"))]
 #[doc(hidden)]
 #[macro_export]
-macro_rules! __wifi_init_debug_worker {
+macro_rules! _wifi_init_debug_worker {
     ($Config:ty, $spawner:expr, $sta_stack:expr, $config:expr, $io:expr, $notify:expr) => {};
 }
 
@@ -633,10 +631,10 @@ macro_rules! __wifi_init_debug_worker {
 
 #[doc(hidden)]
 #[macro_export]
-macro_rules! __wifi_init_workers {
+macro_rules! _wifi_init_workers {
     ($Config:ty) => {
         #[embassy_executor::task]
-        async fn __config_http_worker(
+        async fn _config_http_worker(
             stack: embassy_net::Stack<'static>,
             config: &'static embassy_sync::mutex::Mutex<
                 embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex,
@@ -657,7 +655,7 @@ macro_rules! __wifi_init_workers {
             .await
         }
 
-        fn __spawn_config_http_workers(
+        fn _spawn_config_http_workers(
             s: embassy_executor::Spawner,
             ap_stack: embassy_net::Stack<'static>,
             _sta_stack: embassy_net::Stack<'static>,
@@ -674,9 +672,9 @@ macro_rules! __wifi_init_workers {
                 <$Config as $crate::config_storage::ConfigApi>::ChangedSet,
             >,
         ) -> Result<(), $crate::Error> {
-            s.spawn(__config_http_worker(ap_stack, config, io, notify))
+            s.spawn(_config_http_worker(ap_stack, config, io, notify))
                 .map_err(|_| $crate::Error::SpawnHttpWorker)?;
-            $crate::__wifi_init_debug_worker!($Config, s, _sta_stack, config, io, notify);
+            $crate::_wifi_init_debug_worker!($Config, s, _sta_stack, config, io, notify);
             Ok(())
         }
     };
