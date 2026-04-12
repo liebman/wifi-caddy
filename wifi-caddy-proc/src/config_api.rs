@@ -193,7 +193,6 @@ fn gen_config_change_enum(pages: &[(String, Vec<ApiField>)]) -> TokenStream {
 
 /// Returns (dto_structs, get_group_json arms, set_group_json arms).
 fn gen_dto_and_group_arms(
-    name: &syn::Ident,
     pages: &[(String, Vec<ApiField>)],
 ) -> (Vec<TokenStream>, Vec<TokenStream>, Vec<TokenStream>) {
     let mut dto_structs = Vec::new();
@@ -269,7 +268,6 @@ fn gen_dto_and_group_arms(
             })
             .collect();
 
-        let _ = name; // suppress unused warning; name is used in the ConfigApi impl below
         set_arms.push(quote! {
             #page_lit => {
                 let (dto, _) = serde_json_core::from_str::<#dto_name>(json)
@@ -435,7 +433,7 @@ pub fn derive_config_api_impl(input: &DeriveInput) -> TokenStream {
     }
 
     let config_change_enum = gen_config_change_enum(&pages);
-    let (dto_structs, get_arms, set_arms) = gen_dto_and_group_arms(name, &pages);
+    let (dto_structs, get_arms, set_arms) = gen_dto_and_group_arms(&pages);
     let set_field_arms = gen_set_field_arms(&pages);
     let notify_channel_block = gen_notify_channel(&attrs, pages.len());
 
