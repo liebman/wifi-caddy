@@ -4,7 +4,6 @@
 //! `"__magic__"` and `"__format_version__"`). Values are passed in via
 //! `ConfigStorageParams`.
 
-use alloc::vec::Vec;
 use core::ops::Range;
 
 use embassy_embedded_hal::adapter::BlockingAsync;
@@ -123,7 +122,7 @@ impl<'d> FlashConfigStorage<'d> {
 impl ConfigStorage for FlashConfigStorage<'_> {
     async fn load_bytes(&mut self, key: u64, buf: &mut [u8]) -> Result<Option<usize>, ConfigError> {
         let mut internal_buf = [0u8; BUFFER_SIZE];
-        let value: Option<Vec<u8>> = self
+        let value: Option<&[u8]> = self
             .storage
             .fetch_item(&mut internal_buf, &key)
             .await
@@ -140,23 +139,21 @@ impl ConfigStorage for FlashConfigStorage<'_> {
 
     async fn store_bytes(&mut self, key: u64, bytes: &[u8]) -> Result<(), ConfigError> {
         let mut buffer = [0u8; BUFFER_SIZE];
-        let current: Option<Vec<u8>> = self
-            .storage
-            .fetch_item(&mut buffer, &key)
-            .await
-            .map_err(|_| ConfigError::Backend)?;
-
-        if let Some(ref existing) = current
-            && existing.len() == bytes.len()
-            && existing.as_slice() == bytes
-        {
-            return Ok(());
+        let needs_write = {
+            let current: Option<&[u8]> = self
+                .storage
+                .fetch_item(&mut buffer, &key)
+                .await
+                .map_err(|_| ConfigError::Backend)?;
+            !matches!(current, Some(existing) if existing.len() == bytes.len() && existing == bytes)
+        };
+        if needs_write {
+            self.storage
+                .store_item(&mut buffer, &key, &bytes)
+                .await
+                .map_err(|_| ConfigError::Backend)
+        } else {
+            Ok(())
         }
-
-        let value: Vec<u8> = bytes.to_vec();
-        self.storage
-            .store_item(&mut buffer, &key, &value)
-            .await
-            .map_err(|_| ConfigError::Backend)
-    }
+    }    
 }
