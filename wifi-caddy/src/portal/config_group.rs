@@ -74,10 +74,16 @@ where
     }
 
     match config_guard.get_group_json(group, buf) {
-        Ok(len) => {
-            let json = core::str::from_utf8(&buf[..len]).unwrap_or("");
-            ConfigGroupResult::Json(json)
-        }
+        Ok(len) => match core::str::from_utf8(&buf[..len]) {
+            Ok(json) => ConfigGroupResult::Json(json),
+            Err(_) => {
+                error!(
+                    "handle_config_group: get_group_json returned invalid UTF-8 for group {}",
+                    group
+                );
+                ConfigGroupResult::Err(500, "internal error: invalid UTF-8")
+            }
+        },
         Err(e) => {
             error!(
                 "handle_config_group: get_group_json failed for group {}: {}",
