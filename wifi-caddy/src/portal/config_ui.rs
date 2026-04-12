@@ -28,6 +28,12 @@ const CONFIG_GROUP_JSON_BUF_SIZE: usize = 512;
 /// - `GET /` -- config page (single static HTML string)
 /// - `GET /config-group/<group>` -- config group JSON get/set via `?set=...`
 /// - `GET /config/<field>` -- single field get/set via `?set=...`
+///
+/// ## Lock ordering
+///
+/// When both `config` and `io` mutexes need to be held, `config` is always
+/// locked first, then `io` inside the `config` guard. Future code must
+/// preserve this order to prevent deadlocks.
 pub struct ConfigHandler<R: RawMutex + 'static, C: ConfigType + 'static, S: 'static> {
     /// Shared config mutex (read for GET, locked+mutated for SET).
     pub(crate) config: &'static Mutex<R, C>,
