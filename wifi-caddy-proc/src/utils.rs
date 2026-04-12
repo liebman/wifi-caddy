@@ -83,6 +83,7 @@ pub fn escape_html(s: &str) -> String {
             '<' => out.push_str("&lt;"),
             '>' => out.push_str("&gt;"),
             '"' => out.push_str("&quot;"),
+            '\'' => out.push_str("&#39;"),
             _ => out.push(c),
         }
     }
