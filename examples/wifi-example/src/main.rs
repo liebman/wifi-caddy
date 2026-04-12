@@ -9,7 +9,7 @@
 extern crate alloc;
 
 use alloc::string::String;
-use alloc::string::ToString;
+use core::str::FromStr;
 #[cfg(feature = "defmt")]
 use defmt::info;
 use embassy_executor::Spawner;
@@ -21,6 +21,7 @@ use esp_hal::gpio::{InputConfig, Pull};
 use esp_hal::timer::timg::TimerGroup;
 use esp_println as _;
 use esp_storage::FlashStorage;
+use esp_wifi_caddy::{WifiApSsidPrefix, WifiPass, WifiSsid};
 #[cfg(not(feature = "defmt"))]
 use log::info;
 use wifi_caddy::ConfigHandle;
@@ -72,7 +73,12 @@ async fn config_updated_task(
             };
             if !ssid.is_empty() {
                 let _ = wifi_sender
-                    .send(esp_wifi_caddy::WifiCaddyCommand::StaUp(ssid, pass))
+                    .send(esp_wifi_caddy::WifiCaddyCommand::StaUp(
+                        WifiSsid::from_str(ssid.as_str())
+                            .expect("Failed to convert String to WifiSsid"),
+                        WifiPass::from_str(pass.as_str())
+                            .expect("Failed to convert String to WifiPass"),
+                    ))
                     .await;
             }
         }
@@ -142,8 +148,10 @@ async fn main(spawner: Spawner) {
         if !ssid.is_empty() {
             wifi_sender
                 .send(esp_wifi_caddy::WifiCaddyCommand::StaUp(
-                    ssid,
-                    cfg.wifi_pass().clone(),
+                    WifiSsid::from_str(ssid.as_str())
+                        .expect("Failed to convert String to WifiSsid"),
+                    WifiPass::from_str(cfg.wifi_pass().as_str())
+                        .expect("Failed to convert String to WifiPass"),
                 ))
                 .await;
         }
@@ -170,7 +178,7 @@ async fn main(spawner: Spawner) {
             info!("AP up");
             wifi_sender
                 .send(esp_wifi_caddy::WifiCaddyCommand::APUp(
-                    "wifi-example-".to_string(),
+                    WifiApSsidPrefix::from_str("wifi-example-").unwrap(),
                 ))
                 .await;
         }

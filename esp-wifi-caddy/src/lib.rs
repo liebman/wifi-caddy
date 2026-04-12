@@ -5,8 +5,6 @@
 
 extern crate alloc;
 
-use alloc::string::String;
-
 use embassy_executor::Spawner;
 use embassy_futures::select::Either3;
 use embassy_futures::select::select3;
@@ -69,15 +67,32 @@ macro_rules! mk_static {
     }};
 }
 
+/// Maximum SSID length (IEEE 802.11 max is 32 bytes).
+const MAX_SSID_LEN: usize = 32;
+/// Maximum passphrase length (WPA2 max is 63 ASCII chars).
+const MAX_PASS_LEN: usize = 64;
+/// Maximum AP SSID prefix length. Full SSID = prefix + 12 hex chars (MAC).
+const MAX_AP_SSID_PREFIX_LEN: usize = 20;
+
+/// Delay before retrying STA connect after failure or disconnect (ms).
+const STA_RECONNECT_DELAY_MS: u64 = 5000;
+
+/// SSID type
+pub type WifiSsid = heapless::String<MAX_SSID_LEN>;
+/// Passphrase type
+pub type WifiPass = heapless::String<MAX_PASS_LEN>;
+/// AP SSID prefix type
+pub type WifiApSsidPrefix = heapless::String<MAX_AP_SSID_PREFIX_LEN>;
+
 /// Command to control WiFi caddy (all configuration is via commands).
 #[derive(Clone)]
 pub enum WifiCaddyCommand {
     /// Enable AP mode with given SSID prefix (full SSID = prefix + MAC).
-    APUp(String),
+    APUp(WifiApSsidPrefix),
     /// Disable AP (STA-only or None).
     APDown,
     /// Set STA credentials (ssid, pass) and enable STA.
-    StaUp(String, String),
+    StaUp(WifiSsid, WifiPass),
 }
 
 impl core::fmt::Debug for WifiCaddyCommand {
@@ -145,9 +160,6 @@ pub type WifiCommandSender =
     Sender<'static, CriticalSectionRawMutex, WifiCaddyCommand, WIFI_COMMAND_CHANNEL_CAPACITY>;
 
 static WIFI_COMMAND_CHANNEL: WifiCommandChannel = WifiCommandChannel::new();
-
-/// Delay before retrying STA connect after failure or disconnect (ms).
-const STA_RECONNECT_DELAY_MS: u64 = 5000;
 
 /// STA and AP network stacks returned by [`init`].
 pub struct WifiStacks {
@@ -232,10 +244,10 @@ async fn reconnect_timer(at: Option<Instant>) {
 struct WifiRunner {
     controller: WifiController<'static>,
     ap_up: bool,
-    ap_ssid_prefix: String,
+    ap_ssid_prefix: WifiApSsidPrefix,
     ap_mac: [u8; 6],
-    ssid: String,
-    pass: String,
+    ssid: WifiSsid,
+    pass: WifiPass,
     wifi_commands: WifiCommandReceiver,
     reconnect_at: Option<Instant>,
 }
@@ -249,17 +261,20 @@ impl WifiRunner {
         Self {
             controller,
             ap_up: false,
-            ap_ssid_prefix: String::new(),
+            ap_ssid_prefix: WifiApSsidPrefix::new(),
             ap_mac,
-            ssid: String::new(),
-            pass: String::new(),
+            ssid: WifiSsid::new(),
+            pass: WifiPass::new(),
             wifi_commands,
             reconnect_at: None,
         }
     }
 
-    fn ap_ssid(&self) -> String {
-        alloc::fmt::format(format_args!(
+    fn ap_ssid(&self) -> WifiSsid {
+        use core::fmt::Write;
+        let mut ap_ssid = WifiSsid::new();
+
+        let _ =write!(ap_ssid,
             "{}{:02x}{:02x}{:02x}{:02x}{:02x}{:02x}",
             self.ap_ssid_prefix,
             self.ap_mac[0],
@@ -268,7 +283,8 @@ impl WifiRunner {
             self.ap_mac[3],
             self.ap_mac[4],
             self.ap_mac[5]
-        ))
+        );
+        ap_ssid
     }
 
     fn current_config(&self) -> ModeConfig {
@@ -277,22 +293,22 @@ impl WifiRunner {
         } else if !self.ap_up && !self.ssid.is_empty() {
             ModeConfig::Client(
                 ClientConfig::default()
-                    .with_ssid(self.ssid.clone())
-                    .with_password(self.pass.clone()),
+                    .with_ssid(self.ssid.as_str().into())
+                    .with_password(self.pass.as_str().into()),
             )
         } else if self.ap_up && self.ssid.is_empty() {
             ModeConfig::AccessPoint(
                 AccessPointConfig::default()
-                    .with_ssid(self.ap_ssid())
+                    .with_ssid(self.ap_ssid().as_str().into())
                     .with_password("".into()),
             )
         } else {
             ModeConfig::ApSta(
                 ClientConfig::default()
-                    .with_ssid(self.ssid.clone())
-                    .with_password(self.pass.clone()),
+                    .with_ssid(self.ssid.as_str().into())
+                    .with_password(self.pass.as_str().into()),
                 AccessPointConfig::default()
-                    .with_ssid(self.ap_ssid())
+                    .with_ssid(self.ap_ssid().as_str().into())
                     .with_password("".into()),
             )
         }

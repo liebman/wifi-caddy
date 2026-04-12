@@ -938,6 +938,7 @@ dependencies = [
  "esp-radio",
  "esp-rtos",
  "esp-storage",
+ "heapless 0.8.0",
  "log",
  "sequential-storage",
  "static_cell",
