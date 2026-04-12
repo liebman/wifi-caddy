@@ -301,10 +301,22 @@ fn gen_visible_input_html(f: &FormField, info: &ResolvedInfo) -> String {
         _ => " required",
     };
 
-    format!(
-        r#"<div class="{wrapper_class}"><label for="{fname}" class="config-form-label" style="color:var(--config-form-label-color,#555)">{label_esc}</label><input type="{input_type}"{step_attr}{req_attr} id="{fname}" name="{fname}" class="config-form-input config-form-input-{fname}{field_class}" style="border:var(--config-form-input-border,2px solid #ddd)"{min_attr}{max_attr}><div class="config-form-help" style="color:var(--config-form-help-color,#888)">{help_esc}</div></div>"#,
-        input_type = info.input_type,
-    )
+    {
+        let mut h = String::new();
+        h.push_str(&format!(r#"<div class="{wrapper_class}">"#));
+        h.push_str(&format!(
+            r#"<label for="{fname}" class="config-form-label" style="color:var(--config-form-label-color,#555)">{label_esc}</label>"#
+        ));
+        h.push_str(&format!(
+            r#"<input type="{}"{step_attr}{req_attr} id="{fname}" name="{fname}" class="config-form-input config-form-input-{fname}{field_class}" style="border:var(--config-form-input-border,2px solid #ddd)"{min_attr}{max_attr}>"#,
+            info.input_type
+        ));
+        h.push_str(&format!(
+            r#"<div class="config-form-help" style="color:var(--config-form-help-color,#888)">{help_esc}</div>"#
+        ));
+        h.push_str("</div>");
+        h
+    }
 }
 
 fn gen_html_string(fields: &[FormField]) -> Result<String, String> {
@@ -399,7 +411,16 @@ fn gen_js_string(page_name: &str, fields: &[FormField]) -> Result<String, String
     }
 
     js.push_str(&format!(
-        "const response=await fetch(CONFIG_URL_{0}+\"?set=\"+encodeURIComponent(JSON.stringify(data)),{{method:\"GET\"}});if(!response.ok)throw new Error(await response.text()||\"HTTP \"+response.status);}};window.{1}=window.{1}||{1};window.{2}=window.{2}||{2};",
+        concat!(
+            "const response=await fetch(",
+            "CONFIG_URL_{0}+\"?set=\"+encodeURIComponent(JSON.stringify(data)),",
+            "{{method:\"GET\"}}",
+            ");",
+            "if(!response.ok)throw new Error(await response.text()||\"HTTP \"+response.status);",
+            "}};",
+            "window.{1}=window.{1}||{1};",
+            "window.{2}=window.{2}||{2};",
+        ),
         page_js_id, load_fn, save_fn
     ));
 
