@@ -66,18 +66,22 @@ impl<'d> FlashConfigStorage<'d> {
         let magic = match self.get_value::<u32>(MAGIC_KEY_U64).await {
             Ok(Some(magic)) => magic,
             Ok(None) => {
-                error!("Config magic not found");
+                error!("Config magic not found — formatting");
                 self.format(params).await?;
                 self.get_value::<u32>(MAGIC_KEY_U64)
                     .await?
                     .ok_or(ConfigError::Backend)?
             }
-            Err(_) => {
-                error!("Config format migration needed");
+            Err(ConfigError::InvalidData) | Err(ConfigError::Utf8) => {
+                error!("Config corrupted — formatting");
                 self.format(params).await?;
                 self.get_value::<u32>(MAGIC_KEY_U64)
                     .await?
                     .ok_or(ConfigError::Backend)?
+            }
+            Err(e) => {
+                error!("Config I/O error during mount — not formatting");
+                return Err(e);
             }
         };
         let version = self.get_value::<u32>(FORMAT_VERSION_KEY_U64).await?;
