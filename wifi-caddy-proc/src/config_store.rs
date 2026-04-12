@@ -24,7 +24,7 @@ struct StoreField {
 
 /// A key entry: field name, FNV-1a hash, and the `ConfigKey` variant ident.
 struct KeyInfo {
-    _name: String,
+    name: String,
     hash: u64,
     variant: syn::Ident,
 }
@@ -77,7 +77,7 @@ fn parse_store_fields(
         let hash = fnv1a_hash(&name);
         let variant = variant_ident_for_field(ident);
         keys.push(KeyInfo {
-            _name: name.clone(),
+            name: name.clone(),
             hash,
             variant,
         });
@@ -101,14 +101,18 @@ fn parse_store_fields(
 // Phase 2 – compile-time hash collision check
 // ---------------------------------------------------------------------------
 
-fn gen_collision_check(all_hashes: &[u64]) -> TokenStream {
+fn gen_collision_check(all_hashes: &[u64], all_names: &[&str]) -> TokenStream {
     let mut stmts = Vec::new();
     for i in 0..all_hashes.len() {
         for j in (i + 1)..all_hashes.len() {
             let hi = all_hashes[i];
             let hj = all_hashes[j];
+            let msg = format!(
+                "Config key hash collision: '{}' and '{}'",
+                all_names[i], all_names[j]
+            );
             stmts.push(quote! {
-                ::core::assert!(#hi != #hj, "Config key hash collision detected");
+                ::core::assert!(#hi != #hj, #msg);
             });
         }
     }
@@ -368,8 +372,10 @@ pub fn derive_config_store_impl(input: &DeriveInput) -> TokenStream {
     // Collect all hashes (including reserved keys) for collision check
     let mut all_hashes = vec![fnv1a_hash(MAGIC_KEY), fnv1a_hash(FORMAT_VERSION_KEY)];
     all_hashes.extend(keys.iter().map(|k| k.hash));
+    let mut all_names: Vec<&str> = vec![MAGIC_KEY, FORMAT_VERSION_KEY];
+    all_names.extend(keys.iter().map(|k| k.name.as_str()));
 
-    let collision_check = gen_collision_check(&all_hashes);
+    let collision_check = gen_collision_check(&all_hashes, &all_names);
     let key_enum = gen_key_enum(&keys);
     let (getters, setters) = gen_accessors(&fields);
     let (get_str_arms, set_str_arms) = gen_str_arms(&fields);
