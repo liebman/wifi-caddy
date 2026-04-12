@@ -57,10 +57,15 @@ fn percent_decode(s: &str) -> alloc::string::String {
     let mut chars = s.as_bytes().iter();
     while let Some(&b) = chars.next() {
         if b == b'%' {
-            let hi = chars.next().copied().unwrap_or(b'0');
-            let lo = chars.next().copied().unwrap_or(b'0');
-            let val = hex_nibble(hi) << 4 | hex_nibble(lo);
-            out.push(val as char);
+            match (chars.next().copied(), chars.next().copied()) {
+                (Some(hi), Some(lo)) => {
+                    let val = hex_nibble(hi) << 4 | hex_nibble(lo);
+                    out.push(val as char);
+                }
+                _ => {
+                    out.push('%');
+                }
+            }
         } else if b == b'+' {
             out.push(' ');
         } else {
