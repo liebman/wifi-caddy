@@ -207,6 +207,19 @@ attributes (`#[config_store]`, `#[config_form]`, `#[config_server]`, `#[config_n
 | `WifiCaddyCommand` | `StaUp(ssid, pass)`, `APUp(prefix)`, `APDown` |
 | `mk_static!` | Helper macro to create a `&'static T` from a value |
 
+### Generated types (from `#[derive(WifiCaddyConfig)]`)
+
+The `WifiCaddyConfig` derive macro emits several types into your crate's namespace.
+These are used directly in application code:
+
+| Type | Description |
+|------|-------------|
+| `ConfigChange` | `EnumSetType` enum with one variant per `notify = "..."` group (e.g. `Wifi`, `Example`). Use with `changed.contains(ConfigChange::Wifi)` |
+| `ConfigUpdateReceiver` | Type alias for `&'static Channel<..., EnumSet<ConfigChange>, N>`. Passed to tasks that react to config changes |
+| `ConfigUpdateChannel` | The underlying channel type (usually not referenced directly) |
+| `ConfigKey` | Enum mapping field names to FNV-1a hash keys for storage |
+| `<ConfigStruct><Page>Config` (e.g. `AppConfigMainConfig`) | Per-page DTO structs for JSON serialization (internal, may be renamed) |
+
 ### Config feature (`config`)
 
 | Item | Description |
