@@ -6,17 +6,17 @@ use esp_bootloader_esp_idf::partitions;
 use esp_storage::FlashStorage;
 use wifi_caddy::config_storage::ConfigServer;
 
-use crate::flash_config::FlashConfigStorage;
+use crate::storage::{FlashConfigStorage, Mounted};
 
 /// Mount flash storage and load the config from the given partition range.
 #[doc(hidden)]
 pub async fn mount_and_load<C: ConfigServer>(
     flash: FlashStorage<'static>,
     partition_range: Range<u32>,
-) -> Result<(C, FlashConfigStorage<'static>), wifi_caddy::Error> {
+) -> Result<(C, FlashConfigStorage<'static, Mounted>), wifi_caddy::Error> {
     let params = C::storage_params();
-    let mut storage = FlashConfigStorage::new(flash, partition_range);
-    storage.mount(&params).await?;
+    let storage = FlashConfigStorage::new(flash, partition_range);
+    let mut storage = storage.mount(&params).await?;
     let config = C::load_from(&mut storage).await?;
     Ok((config, storage))
 }
@@ -26,7 +26,7 @@ pub async fn mount_and_load<C: ConfigServer>(
 pub async fn mount_and_load_by_partition<C: ConfigServer>(
     mut flash: FlashStorage<'static>,
     partition_name: &str,
-) -> Result<(C, FlashConfigStorage<'static>), wifi_caddy::Error> {
+) -> Result<(C, FlashConfigStorage<'static, Mounted>), wifi_caddy::Error> {
     let range = resolve_partition_range(&mut flash, partition_name)?;
     mount_and_load::<C>(flash, range).await
 }

@@ -8,7 +8,7 @@ use embassy_sync::mutex::Mutex;
 use esp_hal::peripherals::WIFI;
 use wifi_caddy::config_storage::ConfigServer;
 
-use crate::flash_config::FlashConfigStorage;
+use crate::storage::{FlashConfigStorage, Mounted};
 use crate::{WifiCommandSender, WifiStacks, init};
 
 #[doc(hidden)]
@@ -16,7 +16,7 @@ pub async fn wifi_init_inner<C, R, F>(
     spawner: Spawner,
     wifi: WIFI<'static>,
     config_mutex: &'static Mutex<CriticalSectionRawMutex, C>,
-    io_mutex: &'static Mutex<CriticalSectionRawMutex, FlashConfigStorage<'static>>,
+    io_mutex: &'static Mutex<CriticalSectionRawMutex, FlashConfigStorage<'static, Mounted>>,
     config_rx: R,
     notify: DynamicSender<'static, C::ChangedSet>,
     spawn_workers: F,
@@ -37,7 +37,7 @@ where
         Stack<'static>,
         Stack<'static>,
         &'static Mutex<CriticalSectionRawMutex, C>,
-        &'static Mutex<CriticalSectionRawMutex, FlashConfigStorage<'static>>,
+        &'static Mutex<CriticalSectionRawMutex, FlashConfigStorage<'static, Mounted>>,
         DynamicSender<'static, C::ChangedSet>,
     ) -> Result<(), wifi_caddy::Error>,
 {

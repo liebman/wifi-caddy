@@ -34,8 +34,8 @@ use esp_radio::wifi::WifiStaState;
 // fmt must be first: its macro_rules! macros (info!, warn!, etc.) are used by all other modules.
 mod fmt;
 
-mod flash_config;
 mod partition;
+mod storage;
 mod wifi;
 
 // Re-export platform-agnostic types from wifi-caddy for backward compatibility
@@ -48,9 +48,11 @@ pub use wifi_caddy::run_http_debug_loop;
 pub use wifi_caddy::{ConfigServer, ConfigType};
 
 #[doc(hidden)]
-pub use flash_config::FlashConfigStorage;
-#[doc(hidden)]
 pub use partition::{mount_and_load, mount_and_load_by_partition};
+#[doc(hidden)]
+pub use storage::FlashConfigStorage;
+#[doc(hidden)]
+pub use storage::Mounted;
 #[doc(hidden)]
 pub use wifi::wifi_init_inner;
 
@@ -586,7 +588,7 @@ macro_rules! _wifi_init_body {
         let io_mutex = $crate::mk_static!(
             embassy_sync::mutex::Mutex<
                 embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex,
-                $crate::FlashConfigStorage<'static>,
+                $crate::FlashConfigStorage<'static, $crate::Mounted>,
             >,
             embassy_sync::mutex::Mutex::new($storage)
         );
@@ -622,16 +624,17 @@ macro_rules! _wifi_init_debug_worker {
             >,
             io: &'static embassy_sync::mutex::Mutex<
                 embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex,
-                $crate::FlashConfigStorage<'static>,
+                $crate::FlashConfigStorage<'static, $crate::Mounted>,
             >,
             notify: embassy_sync::channel::DynamicSender<
                 'static,
                 <$Config as $crate::config_storage::ConfigApi>::ChangedSet,
             >,
         ) {
-            $crate::run_http_debug_loop::<$Config, $crate::FlashConfigStorage<'static>>(
-                stack, config, io, notify,
-            )
+            $crate::run_http_debug_loop::<
+                $Config,
+                $crate::FlashConfigStorage<'static, $crate::Mounted>,
+            >(stack, config, io, notify)
             .await
         }
 
@@ -665,16 +668,17 @@ macro_rules! _wifi_init_workers {
             >,
             io: &'static embassy_sync::mutex::Mutex<
                 embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex,
-                $crate::FlashConfigStorage<'static>,
+                $crate::FlashConfigStorage<'static, $crate::Mounted>,
             >,
             notify: embassy_sync::channel::DynamicSender<
                 'static,
                 <$Config as $crate::config_storage::ConfigApi>::ChangedSet,
             >,
         ) {
-            $crate::run_http_config_loop::<$Config, $crate::FlashConfigStorage<'static>>(
-                stack, config, io, notify,
-            )
+            $crate::run_http_config_loop::<
+                $Config,
+                $crate::FlashConfigStorage<'static, $crate::Mounted>,
+            >(stack, config, io, notify)
             .await
         }
 
@@ -688,7 +692,7 @@ macro_rules! _wifi_init_workers {
             >,
             io: &'static embassy_sync::mutex::Mutex<
                 embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex,
-                $crate::FlashConfigStorage<'static>,
+                $crate::FlashConfigStorage<'static, $crate::Mounted>,
             >,
             notify: embassy_sync::channel::DynamicSender<
                 'static,
