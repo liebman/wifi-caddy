@@ -31,7 +31,6 @@ esp-wifi-caddy    = "0.1.0"
 
 | Feature        | Default | Description                                      |
 |----------------|---------|--------------------------------------------------|
-| `portal`       | yes     | HTTP config server, DHCP, config UI              |
 | `captive`      | no      | Captive-portal DNS redirect                      |
 | `debug-server` | no      | Additional HTTP server on the STA interface       |
 | `defmt`        | no      | defmt logging support                            |

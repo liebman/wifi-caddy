@@ -27,7 +27,7 @@ HTTP portal for runtime configuration.
 │        ├─ AP stack              ├─ send APUp(prefix)            │
 │        └─ WifiRunner loop       └─ send APDown                  │
 │                                                                 │
-│  With feature "config":                                         │
+│  Config storage & HTTP portal:                                  │
 │  ┌──────────────────────────────────────────────┐               │
 │  │ Flash config storage (sequential-storage)    │               │
 │  │ HTTP config UI (edge-http on AP stack)        │               │
@@ -43,10 +43,9 @@ HTTP portal for runtime configuration.
 - **Configuration:** All configuration is via `WifiCaddyCommand`: send `StaUp(ssid, pass)` to
   enable STA with credentials, `APUp(prefix)` to enable the AP (full SSID = prefix + MAC), and
   `APDown` to disable the AP. The caddy starts with empty state until you send commands.
-- **Optional (feature `config`, default on):** In-tree config storage traits and flash storage,
-  plus captive HTTP (AP DHCP, HTTP server, config UI). No separate crates — enable or disable
-  with the `config` feature. Use with **wifi-caddy-proc** to derive config structs and
-  get `init_wifi`.
+- **Config storage:** In-tree config storage traits and flash-backed storage,
+  plus captive HTTP portal (AP DHCP, HTTP server, config UI). Use with
+  **wifi-caddy-proc** to derive config structs.
 
 ## Boot flow (with config + proc macro)
 
@@ -142,16 +141,24 @@ selectors match.
       (nav_left)  ...  (nav_right)
     </div>
     <div class="content">
-      <div class="message">           -- flash messages (save/load)
+      <div id="message" class="message"></div>   -- flash messages (save/load)
       <div class="config-tabs">       -- tab bar (only if >1 page)
         <button class="config-tab active">
       </div>
       <div class="config-tab-panel">
-        <div class="config-loading-overlay">
-        <form>
-          <fieldset> / <legend>
-          <div class="form-group"> / <label> / <input>
-          <div class="button-group">  -- Reload + Save buttons
+        <div class="config-loading-overlay"> …
+        <form id="configForm-…">
+          <div class="config-form">
+            <fieldset class="config-form-fieldset">
+              <legend class="config-form-legend"> …
+              <div class="config-form-group config-form-field-…">
+                <label class="config-form-label"> …
+                <input class="config-form-input …">
+                <div class="config-form-help"> …
+              </div>
+            </fieldset>
+          </div>
+          <div class="button-group">  -- Reload + Save
         </form>
       </div>
     </div>
@@ -168,10 +175,10 @@ selectors match.
 | `header`, `header h1`, `header p` | Purple header bar |
 | `.nav`, `.nav a` | Navigation bar under header |
 | `.content` | Form content area |
-| `fieldset`, `legend` | Field groups |
-| `.form-group`, `label` | Form field wrappers |
-| `input[type="text"]`, `input[type="password"]`, `input[type="number"]` | Text inputs |
-| `.help-text` | Field help text |
+| `fieldset.config-form-fieldset`, `legend.config-form-legend` | Field groups |
+| `.config-form`, `.config-form-group`, `.config-form-label` | Form layout and field wrappers |
+| `.config-form-input`, `input[type="text"]`, `input[type="password"]`, `input[type="number"]` | Text inputs |
+| `.config-form-help` | Field help text |
 | `.button-group` | Save/reload button row |
 | `button[type="submit"]` | Save button |
 | `button[type="button"]` | Reload button |
@@ -220,7 +227,7 @@ These are used directly in application code:
 | `ConfigKey` | Enum mapping field names to FNV-1a hash keys for storage |
 | `<ConfigStruct><Page>Config` (e.g. `AppConfigMainConfig`) | Per-page DTO structs for JSON serialization (internal, may be renamed) |
 
-### Config feature (`config`)
+### Config types (`wifi_init!`)
 
 | Item | Description |
 |------|-------------|
@@ -234,21 +241,17 @@ These are used directly in application code:
 
 | Feature | Default | Description |
 |---------|---------|-------------|
-| `defmt` | yes | defmt logging |
+| `defmt` | no | defmt logging |
 | `log` | no | log crate logging (mutually exclusive with `defmt`) |
-| `config` | yes | In-tree config storage (traits, flash backend) and captive HTTP (DHCP, HTTP server, config UI) |
-| `captive` | yes | DNS captive-portal redirect on AP; requires `config` |
-| `partition-table` | yes | Resolve config partition by name from the ESP-IDF partition table |
+| `captive` | yes | DNS captive-portal redirect on AP |
+| `debug-server` | no | Additional HTTP server on the STA interface (forwards to `wifi-caddy`) |
 | `nightly` | no | Enables the `impl_trait_in_assoc_type` nightly feature. **Enable this if `embassy-executor` is built with its `nightly` feature**, so that task and async code compiles correctly. |
 
 **Feature dependencies:**
 
-- `captive` requires `config` — the DNS redirect serves the config portal.
-- `partition-table` is used by `run_inner_by_partition` to look up the flash
-  partition by name. Without it, you must provide the flash range manually via
-  `run_inner`.
-- To minimize binary size, disable features you don't need:
-  `default-features = false, features = ["config"]` gives config without captive DNS.
+- `defmt` and `log` are mutually exclusive — enable at most one.
+- `captive` forwards to `wifi-caddy`'s `captive` feature (captive DNS on the AP).
+- To build without captive DNS, set `default-features = false` on `esp-wifi-caddy` (or disable `captive` explicitly).
 
 ## Prerequisites
 
