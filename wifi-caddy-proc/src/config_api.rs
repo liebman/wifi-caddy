@@ -178,6 +178,7 @@ fn gen_config_change_enum(pages: &[(String, Vec<ApiField>)]) -> TokenStream {
 
 /// Returns (dto_structs, get_group_json arms, set_group_json arms).
 fn gen_dto_and_group_arms(
+    name: &syn::Ident,
     pages: &[(String, Vec<ApiField>)],
 ) -> (Vec<TokenStream>, Vec<TokenStream>, Vec<TokenStream>) {
     let mut dto_structs = Vec::new();
@@ -185,7 +186,9 @@ fn gen_dto_and_group_arms(
     let mut set_arms = Vec::new();
 
     for (page_name, fields) in pages {
-        let dto_name = format_ident!("{}Config", to_pascal_case(page_name));
+        let page_pascal = to_pascal_case(page_name);
+        let page_ident = syn::Ident::new(&page_pascal, proc_macro2::Span::call_site());
+        let dto_name = format_ident!("{}{}PageDto", name, page_ident);
         let page_lit = syn::LitStr::new(page_name, proc_macro2::Span::call_site());
 
         // DTO struct: one public field per config field, serialisable to/from JSON
@@ -194,7 +197,10 @@ fn gen_dto_and_group_arms(
             let t = &f.ty;
             quote! { pub #i: #t }
         });
-        let dto_doc = format!("DTO for config page \"{}\".", page_name);
+        let dto_doc = format!(
+            "Generated DTO for config page \"{}\" of `{}`.",
+            page_name, name
+        );
         dto_structs.push(quote! {
             #[doc = #dto_doc]
             #[derive(serde::Serialize, serde::Deserialize)]
@@ -389,7 +395,7 @@ fn gen_config_server_impl(
 /// Field-level: from `#[config_form]` we use `skip` and `input_type` (password → redacted in GET);
 /// from `#[config_store]`, `notify = "Wifi"` or `notify_group = "wifi"` add a `ConfigChange` variant.
 ///
-/// Emits: per-page DTOs (e.g. `MainConfig`) for JSON, `ConfigChange` enum, `ConfigApi` impl;
+/// Emits: per-page DTOs (e.g. `AppConfigMainPageDto` for struct `AppConfig` and page `main`) for JSON, `ConfigChange` enum, `ConfigApi` impl;
 /// channel types; `impl ConfigServer` with storage params and `init_notify`. Opt-out is not supported.
 ///
 /// All generated code references only `wifi_caddy::*` — no platform-specific types.
@@ -418,7 +424,7 @@ pub fn derive_config_api_impl(input: &DeriveInput) -> TokenStream {
     }
 
     let config_change_enum = gen_config_change_enum(&pages);
-    let (dto_structs, get_arms, set_arms) = gen_dto_and_group_arms(&pages);
+    let (dto_structs, get_arms, set_arms) = gen_dto_and_group_arms(name, &pages);
     let set_field_arms = gen_set_field_arms(&pages);
     let notify_channel_block = gen_notify_channel(&attrs, pages.len());
 
