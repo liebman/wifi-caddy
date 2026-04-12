@@ -1,6 +1,7 @@
 //! Config form codegen for `WifiCaddyConfig`: generates the entire config HTML page
 //! as a single `&'static str` at compile time.
 
+use crate::field_attrs::{parse_config_form_attr_into, ParsedFormAttrs};
 use crate::utils::{
     consume_meta_value, escape_html, escape_js_str, humanize_label, page_name_to_js_id,
     try_parse_lit_str,
@@ -160,22 +161,6 @@ struct UiAttrs {
 // Attribute helpers
 // ---------------------------------------------------------------------------
 
-/// Converts a parsed expression (min/max attr value) to a string for HTML attributes.
-fn expr_to_min_max_string(expr: &syn::Expr) -> Option<String> {
-    match expr {
-        syn::Expr::Unary(unary) if matches!(unary.op, syn::UnOp::Neg(_)) => {
-            expr_to_min_max_string(&unary.expr).map(|s| format!("-{s}"))
-        }
-        syn::Expr::Lit(expr_lit) => match &expr_lit.lit {
-            syn::Lit::Int(i) => i.base10_parse::<i64>().ok().map(|n| n.to_string()),
-            syn::Lit::Float(f) => f.base10_parse::<f64>().ok().map(|n| n.to_string()),
-            syn::Lit::Str(s) => Some(s.value()),
-            _ => None,
-        },
-        _ => None,
-    }
-}
-
 // ---------------------------------------------------------------------------
 // Parse #[config_ui(...)] from struct-level attributes
 // ---------------------------------------------------------------------------
@@ -251,83 +236,35 @@ fn parse_form_fields(data: &syn::DataStruct) -> Vec<FormField> {
         let field_name = ident.to_string();
 
         let mut has_config_form = false;
-        let mut skip = false;
-        let mut page = String::from("main");
-        let mut fieldset: Option<String> = None;
-        let mut hidden = false;
-        let mut label = humanize_label(&field_name);
-        let mut help = String::new();
-        let mut class: Option<String> = None;
-        let mut input_type: Option<String> = None;
-        let mut min: Option<String> = None;
-        let mut max: Option<String> = None;
-        let mut prim_type: Option<String> = None;
-        let mut save_as: Option<String> = None;
+        let mut form = ParsedFormAttrs::default();
 
         for attr in &field.attrs {
             if attr.path().is_ident("config_form") {
                 has_config_form = true;
-                let _ = attr.parse_nested_meta(|meta| {
-                    if meta.path.is_ident("skip") {
-                        skip = true;
-                    } else if meta.path.is_ident("hidden") {
-                        hidden = true;
-                    } else if meta.path.is_ident("page") {
-                        if let Some(v) = try_parse_lit_str(&meta) {
-                            page = v;
-                        }
-                    } else if meta.path.is_ident("fieldset") {
-                        fieldset = try_parse_lit_str(&meta);
-                    } else if meta.path.is_ident("label") {
-                        if let Some(v) = try_parse_lit_str(&meta) {
-                            label = v;
-                        }
-                    } else if meta.path.is_ident("help") {
-                        if let Some(v) = try_parse_lit_str(&meta) {
-                            help = v;
-                        }
-                    } else if meta.path.is_ident("class") {
-                        class = try_parse_lit_str(&meta);
-                    } else if meta.path.is_ident("input_type") {
-                        input_type = try_parse_lit_str(&meta);
-                    } else if meta.path.is_ident("prim_type") {
-                        prim_type = try_parse_lit_str(&meta);
-                    } else if meta.path.is_ident("save_as") {
-                        save_as = try_parse_lit_str(&meta);
-                    } else if meta.path.is_ident("min") {
-                        if let Ok(expr) = meta.value().and_then(|v| v.parse::<syn::Expr>()) {
-                            min = expr_to_min_max_string(&expr);
-                        }
-                    } else if meta.path.is_ident("max") {
-                        if let Ok(expr) = meta.value().and_then(|v| v.parse::<syn::Expr>()) {
-                            max = expr_to_min_max_string(&expr);
-                        }
-                    } else {
-                        consume_meta_value(&meta);
-                    }
-                    Ok(())
-                });
+                let _ = parse_config_form_attr_into(attr, &mut form);
             }
         }
 
-        if !has_config_form || skip {
+        if !has_config_form || form.skip {
             continue;
         }
 
+        let label = form.label.unwrap_or_else(|| humanize_label(&field_name));
+
         form_fields.push(FormField {
             name: field_name,
-            page,
-            fieldset,
-            hidden,
+            page: form.page,
+            fieldset: form.fieldset,
+            hidden: form.hidden,
             label,
-            help,
-            class,
+            help: form.help,
+            class: form.class,
             field_type: field.ty.clone(),
-            min,
-            max,
-            input_type,
-            prim_type,
-            save_as,
+            min: form.min,
+            max: form.max,
+            input_type: form.input_type,
+            prim_type: form.prim_type,
+            save_as: form.save_as,
         });
     }
 

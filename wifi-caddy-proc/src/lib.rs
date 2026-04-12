@@ -5,6 +5,7 @@
 mod config_api;
 mod config_form;
 mod config_store;
+mod field_attrs;
 mod utils;
 
 use proc_macro::TokenStream;

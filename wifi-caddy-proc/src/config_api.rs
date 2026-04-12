@@ -1,5 +1,6 @@
 //! Group API and notify codegen for `WifiCaddyConfig`: JSON get/set, `ConfigServer` + update channel, statics.
 
+use crate::field_attrs::{parse_config_form_attr_into, ParsedFormAttrs};
 use crate::utils::{consume_meta_value, to_pascal_case, try_parse_lit_int, try_parse_lit_str};
 use proc_macro2::TokenStream;
 use quote::{format_ident, quote};
@@ -83,32 +84,14 @@ fn collect_api_fields(fields: &syn::Fields) -> Vec<ApiField> {
         let field_ident = field.ident.as_ref().expect("unnamed fields not supported");
 
         let mut has_config_form = false;
-        let mut skip = false;
-        let mut page = String::from("main");
-        let mut input_type = String::from("text");
+        let mut form = ParsedFormAttrs::default();
         let mut notify: Option<String> = None;
 
-        // from config_form: input_type (password → redact in GET), skip
+        // from config_form: input_type (password → redact in GET), skip, page
         for attr in &field.attrs {
             if attr.path().is_ident("config_form") {
                 has_config_form = true;
-                let _ = attr.parse_nested_meta(|meta| {
-                    if meta.path.is_ident("skip") {
-                        skip = true;
-                    } else if meta.path.is_ident("page") {
-                        if let Some(v) = try_parse_lit_str(&meta) {
-                            page = v;
-                        }
-                    } else if meta.path.is_ident("input_type") {
-                        if let Some(v) = try_parse_lit_str(&meta) {
-                            input_type = v;
-                        }
-                    } else {
-                        // Unrecognized (e.g. fieldset, help): consume so stream advances
-                        consume_meta_value(&meta);
-                    }
-                    Ok(())
-                });
+                let _ = parse_config_form_attr_into(attr, &mut form);
             }
         }
 
@@ -135,14 +118,16 @@ fn collect_api_fields(fields: &syn::Fields) -> Vec<ApiField> {
             }
         }
 
-        if !has_config_form || skip {
+        if !has_config_form || form.skip {
             continue;
         }
+
+        let input_type = form.input_type.unwrap_or_else(|| String::from("text"));
 
         api_fields.push(ApiField {
             ident: field_ident.clone(),
             ty: field.ty.clone(),
-            page,
+            page: form.page,
             is_password: input_type == "password",
             notify,
         });
