@@ -167,8 +167,6 @@ pub type WifiCommandReceiver =
 pub type WifiCommandSender =
     Sender<'static, CriticalSectionRawMutex, WifiCaddyCommand, WIFI_COMMAND_CHANNEL_CAPACITY>;
 
-static WIFI_COMMAND_CHANNEL: WifiCommandChannel = WifiCommandChannel::new();
-
 /// STA and AP network stacks returned by [`init`].
 pub struct WifiStacks {
     /// Station (client) network stack — use for normal internet access.
@@ -187,8 +185,9 @@ pub async fn init(
     wifi: WIFI<'static>,
 ) -> Result<(WifiStacks, WifiCommandSender), Error> {
     info!("wifi: initialize wifi");
-    let wifi_commands = WIFI_COMMAND_CHANNEL.receiver();
-    let sender = WIFI_COMMAND_CHANNEL.sender();
+    let channel = mk_static!(WifiCommandChannel, WifiCommandChannel::new());
+    let wifi_commands = channel.receiver();
+    let sender = channel.sender();
     let sta_config: embassy_net::Config = embassy_net::Config::dhcpv4(Default::default());
     let ap_config = embassy_net::Config::ipv4_static(StaticConfigV4 {
         address: Ipv4Cidr::new(Ipv4Address::new(192, 168, 2, 1), 24),
