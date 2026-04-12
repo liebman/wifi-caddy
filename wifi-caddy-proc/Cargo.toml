@@ -17,3 +17,12 @@ proc-macro = true
 syn = { version = "2.0", features = ["full"] }
 quote = "1.0"
 proc-macro2 = "1.0"
+
+[dev-dependencies]
+trybuild = "1"
+wifi-caddy = { path = "../wifi-caddy" }
+serde = { version = "1.0", default-features = false, features = ["derive", "alloc"] }
+serde-json-core = "0.6"
+enumset = "1.1.10"
+embassy-sync = "0.7.2"
+static_cell = { version = "2.1.1", default-features = false }

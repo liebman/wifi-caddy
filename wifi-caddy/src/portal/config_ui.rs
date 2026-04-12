@@ -238,3 +238,53 @@ where
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use alloc::string::ToString;
+
+    #[test]
+    fn test_percent_decode_basic() {
+        assert_eq!(percent_decode("hello%20world"), "hello world");
+        assert_eq!(percent_decode("a+b"), "a b");
+        assert_eq!(percent_decode("100%25"), "100%");
+    }
+
+    #[test]
+    fn test_percent_decode_truncated() {
+        assert_eq!(percent_decode("abc%"), "abc%");
+        assert_eq!(percent_decode("abc%2"), "abc%");
+    }
+
+    #[test]
+    fn test_hex_nibble() {
+        assert_eq!(hex_nibble(b'0'), 0);
+        assert_eq!(hex_nibble(b'9'), 9);
+        assert_eq!(hex_nibble(b'a'), 10);
+        assert_eq!(hex_nibble(b'F'), 15);
+        assert_eq!(hex_nibble(b'z'), 0);
+    }
+
+    #[test]
+    fn test_parse_set_param() {
+        assert_eq!(
+            parse_set_param("/config-group/main?set=%7B%7D"),
+            Some("{}".to_string())
+        );
+        assert_eq!(parse_set_param("/config-group/main"), None);
+        assert_eq!(
+            parse_set_param("/config/field?other=1&set=hello"),
+            Some("hello".to_string())
+        );
+    }
+
+    #[test]
+    fn test_path_only() {
+        assert_eq!(
+            path_only("/config-group/main?set=foo"),
+            "/config-group/main"
+        );
+        assert_eq!(path_only("/config/field"), "/config/field");
+    }
+}

@@ -36,8 +36,16 @@ jobs:
         run: cargo check --target riscv32imac-unknown-none-elf
         working-directory: wifi-caddy
 
+      - name: Test wifi-caddy
+        run: cargo test 
+        working-directory: wifi-caddy
+
       - name: Check wifi-caddy-proc
         run: cargo check
+        working-directory: wifi-caddy-proc
+
+      - name: Test wifi-caddy-proc
+        run: cargo test
         working-directory: wifi-caddy-proc
 
       - name: Check esp-wifi-caddy

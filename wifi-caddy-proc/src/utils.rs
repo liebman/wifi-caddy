@@ -188,4 +188,15 @@ mod tests {
         assert_eq!(h, fnv1a_hash("wifi_ssid"));
         assert_ne!(h, fnv1a_hash("wifi_pass"));
     }
+
+    #[test]
+    fn test_fnv1a_hash_reserved_keys() {
+        let magic = fnv1a_hash(MAGIC_KEY);
+        let version = fnv1a_hash(FORMAT_VERSION_KEY);
+        assert_ne!(magic, 0);
+        assert_ne!(version, 0);
+        assert_ne!(magic, version);
+        assert_eq!(magic, fnv1a_hash("__magic__"));
+        assert_eq!(version, fnv1a_hash("__format_version__"));
+    }
 }
