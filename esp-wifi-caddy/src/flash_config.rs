@@ -35,6 +35,11 @@ const MAGIC_KEY_U64: u64 = fnv1a_hash(b"__magic__");
 /// Key ID for format version (same as ConfigKey::FormatVersion in wifi-caddy-proc).
 const FORMAT_VERSION_KEY_U64: u64 = fnv1a_hash(b"__format_version__");
 
+/// Internal buffer size for `sequential_storage` fetch/store operations.
+///
+/// This limits the maximum serialized size of any single config value.
+/// If a `ConfigValue::to_bytes()` result exceeds this, the operation fails
+/// with `ConfigError::Backend`. Must be >= `wifi_caddy::config_storage::MAX_VALUE_SIZE`.
 const BUFFER_SIZE: usize = 256;
 
 /// Flash-backed key-value storage implementing [`ConfigStorage`].
