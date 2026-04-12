@@ -33,9 +33,12 @@ struct KeyInfo {
 // Phase 1 – parse `#[config_store(...)]` on each field
 // ---------------------------------------------------------------------------
 
-fn parse_store_fields(data: &syn::DataStruct) -> (Vec<StoreField>, Vec<KeyInfo>) {
+fn parse_store_fields(
+    data: &syn::DataStruct,
+) -> Result<(Vec<StoreField>, Vec<KeyInfo>), TokenStream> {
     let mut fields = Vec::new();
     let mut keys = Vec::new();
+    let mut errors = Vec::new();
 
     for field in &data.fields {
         let ident = field.ident.as_ref().expect("unnamed fields not supported");
@@ -58,16 +61,11 @@ fn parse_store_fields(data: &syn::DataStruct) -> (Vec<StoreField>, Vec<KeyInfo>)
                     } else if meta.path.is_ident("bump") {
                         bump = try_parse_lit_str(&meta);
                     } else {
-                        // Consume unrecognized (e.g. notify) so stream advances
                         consume_meta_value(&meta);
                     }
                     Ok(())
                 }) {
-                    // Return a compile error by abusing the `fields` vec – handled below
-                    // by propagating via a sentinel. Instead, we embed the error in the
-                    // returned TokenStream at the call site; store it as a magic field.
-                    // Simplest approach: panic with the error at macro expansion time.
-                    let _ = e; // error propagated via caller returning compile_error!
+                    errors.push(e.to_compile_error());
                 }
             }
         }
@@ -93,7 +91,10 @@ fn parse_store_fields(data: &syn::DataStruct) -> (Vec<StoreField>, Vec<KeyInfo>)
         });
     }
 
-    (fields, keys)
+    if !errors.is_empty() {
+        return Err(quote! { #(#errors)* });
+    }
+    Ok((fields, keys))
 }
 
 // ---------------------------------------------------------------------------
@@ -359,7 +360,10 @@ pub fn derive_config_store_impl(input: &DeriveInput) -> TokenStream {
             .to_compile_error();
     };
 
-    let (fields, keys) = parse_store_fields(data);
+    let (fields, keys) = match parse_store_fields(data) {
+        Ok(v) => v,
+        Err(errors) => return errors,
+    };
 
     // Collect all hashes (including reserved keys) for collision check
     let mut all_hashes = vec![fnv1a_hash(MAGIC_KEY), fnv1a_hash(FORMAT_VERSION_KEY)];
