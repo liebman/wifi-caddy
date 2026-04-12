@@ -5,6 +5,7 @@
 #![warn(missing_docs)]
 
 use alloc::string::String;
+use core::convert::TryInto;
 use core::fmt;
 
 /// Error type for config storage operations.
@@ -207,142 +208,74 @@ pub trait ConfigValue: core::str::FromStr + core::fmt::Display {
         Self: Sized;
 }
 
-impl ConfigValue for u8 {
-    type Getter<'a> = u8;
-    fn to_getter<'a>(&'a self) -> Self::Getter<'a> {
-        *self
-    }
+macro_rules! impl_config_value_int {
+    ($ty:ty, $size:expr) => {
+        impl ConfigValue for $ty {
+            type Getter<'a> = $ty;
+            fn to_getter<'a>(&'a self) -> Self::Getter<'a> {
+                *self
+            }
 
-    fn to_bytes(&self, buf: &mut [u8]) -> Result<usize, ConfigError> {
-        if buf.is_empty() {
-            return Err(ConfigError::BufferTooSmall(1));
-        }
-        buf[0] = *self;
-        Ok(1)
-    }
+            fn to_bytes(&self, buf: &mut [u8]) -> Result<usize, ConfigError> {
+                if buf.len() < $size {
+                    return Err(ConfigError::BufferTooSmall($size));
+                }
+                buf[..$size].copy_from_slice(&self.to_le_bytes());
+                Ok($size)
+            }
 
-    fn from_bytes(bytes: &[u8]) -> Result<Self, ConfigError> {
-        if bytes.is_empty() {
-            return Err(ConfigError::BufferTooSmall(1));
+            fn from_bytes(bytes: &[u8]) -> Result<Self, ConfigError> {
+                if bytes.len() < $size {
+                    return Err(ConfigError::BufferTooSmall($size));
+                }
+                let arr: [u8; $size] = bytes[..$size]
+                    .try_into()
+                    .map_err(|_| ConfigError::InvalidData)?;
+                Ok(<$ty>::from_le_bytes(arr))
+            }
         }
-        Ok(bytes[0])
-    }
+    };
 }
 
-impl ConfigValue for u16 {
-    type Getter<'a> = u16;
-    fn to_getter<'a>(&'a self) -> Self::Getter<'a> {
-        *self
-    }
+macro_rules! impl_config_value_byte {
+    ($ty:ty) => {
+        impl ConfigValue for $ty {
+            type Getter<'a> = $ty;
+            fn to_getter<'a>(&'a self) -> Self::Getter<'a> {
+                *self
+            }
 
-    fn to_bytes(&self, buf: &mut [u8]) -> Result<usize, ConfigError> {
-        if buf.len() < 2 {
-            return Err(ConfigError::BufferTooSmall(2));
-        }
-        buf[0..2].copy_from_slice(&self.to_le_bytes());
-        Ok(2)
-    }
+            fn to_bytes(&self, buf: &mut [u8]) -> Result<usize, ConfigError> {
+                if buf.is_empty() {
+                    return Err(ConfigError::BufferTooSmall(1));
+                }
+                buf[0] = *self as u8;
+                Ok(1)
+            }
 
-    fn from_bytes(bytes: &[u8]) -> Result<Self, ConfigError> {
-        if bytes.len() < 2 {
-            return Err(ConfigError::BufferTooSmall(2));
+            fn from_bytes(bytes: &[u8]) -> Result<Self, ConfigError> {
+                if bytes.is_empty() {
+                    return Err(ConfigError::BufferTooSmall(1));
+                }
+                Ok(bytes[0] as $ty)
+            }
         }
-        Ok(u16::from_le_bytes([bytes[0], bytes[1]]))
-    }
+    };
 }
 
-impl ConfigValue for u32 {
-    type Getter<'a> = u32;
-    fn to_getter<'a>(&'a self) -> Self::Getter<'a> {
-        *self
-    }
+impl_config_value_byte!(u8);
+impl_config_value_byte!(i8);
+impl_config_value_int!(u16, 2);
+impl_config_value_int!(u32, 4);
+impl_config_value_int!(u64, 8);
+impl_config_value_int!(i16, 2);
+impl_config_value_int!(i32, 4);
+impl_config_value_int!(i64, 8);
+impl_config_value_int!(f32, 4);
+impl_config_value_int!(f64, 8);
 
-    fn to_bytes(&self, buf: &mut [u8]) -> Result<usize, ConfigError> {
-        if buf.len() < 4 {
-            return Err(ConfigError::BufferTooSmall(4));
-        }
-        buf[0..4].copy_from_slice(&self.to_le_bytes());
-        Ok(4)
-    }
-
-    fn from_bytes(bytes: &[u8]) -> Result<Self, ConfigError> {
-        if bytes.len() < 4 {
-            return Err(ConfigError::BufferTooSmall(4));
-        }
-        Ok(u32::from_le_bytes([bytes[0], bytes[1], bytes[2], bytes[3]]))
-    }
-}
-
-impl ConfigValue for u64 {
-    type Getter<'a> = u64;
-    fn to_getter<'a>(&'a self) -> Self::Getter<'a> {
-        *self
-    }
-
-    fn to_bytes(&self, buf: &mut [u8]) -> Result<usize, ConfigError> {
-        if buf.len() < 8 {
-            return Err(ConfigError::BufferTooSmall(8));
-        }
-        buf[0..8].copy_from_slice(&self.to_le_bytes());
-        Ok(8)
-    }
-
-    fn from_bytes(bytes: &[u8]) -> Result<Self, ConfigError> {
-        if bytes.len() < 8 {
-            return Err(ConfigError::BufferTooSmall(8));
-        }
-        Ok(u64::from_le_bytes([
-            bytes[0], bytes[1], bytes[2], bytes[3], bytes[4], bytes[5], bytes[6], bytes[7],
-        ]))
-    }
-}
-
-impl ConfigValue for i16 {
-    type Getter<'a> = i16;
-    fn to_getter<'a>(&'a self) -> Self::Getter<'a> {
-        *self
-    }
-
-    fn to_bytes(&self, buf: &mut [u8]) -> Result<usize, ConfigError> {
-        if buf.len() < 2 {
-            return Err(ConfigError::BufferTooSmall(2));
-        }
-        buf[0..2].copy_from_slice(&self.to_le_bytes());
-        Ok(2)
-    }
-
-    fn from_bytes(bytes: &[u8]) -> Result<Self, ConfigError> {
-        if bytes.len() < 2 {
-            return Err(ConfigError::BufferTooSmall(2));
-        }
-        Ok(i16::from_le_bytes([bytes[0], bytes[1]]))
-    }
-}
-
-impl ConfigValue for i32 {
-    type Getter<'a> = i32;
-    fn to_getter<'a>(&'a self) -> Self::Getter<'a> {
-        *self
-    }
-
-    fn to_bytes(&self, buf: &mut [u8]) -> Result<usize, ConfigError> {
-        if buf.len() < 4 {
-            return Err(ConfigError::BufferTooSmall(4));
-        }
-        buf[0..4].copy_from_slice(&self.to_le_bytes());
-        Ok(4)
-    }
-
-    fn from_bytes(bytes: &[u8]) -> Result<Self, ConfigError> {
-        if bytes.len() < 4 {
-            return Err(ConfigError::BufferTooSmall(4));
-        }
-        Ok(i32::from_le_bytes([bytes[0], bytes[1], bytes[2], bytes[3]]))
-    }
-}
-
-impl ConfigValue for i8 {
-    type Getter<'a> = i8;
+impl ConfigValue for bool {
+    type Getter<'a> = bool;
     fn to_getter<'a>(&'a self) -> Self::Getter<'a> {
         *self
     }
@@ -359,77 +292,7 @@ impl ConfigValue for i8 {
         if bytes.is_empty() {
             return Err(ConfigError::BufferTooSmall(1));
         }
-        Ok(bytes[0] as i8)
-    }
-}
-
-impl ConfigValue for i64 {
-    type Getter<'a> = i64;
-    fn to_getter<'a>(&'a self) -> Self::Getter<'a> {
-        *self
-    }
-
-    fn to_bytes(&self, buf: &mut [u8]) -> Result<usize, ConfigError> {
-        if buf.len() < 8 {
-            return Err(ConfigError::BufferTooSmall(8));
-        }
-        buf[0..8].copy_from_slice(&self.to_le_bytes());
-        Ok(8)
-    }
-
-    fn from_bytes(bytes: &[u8]) -> Result<Self, ConfigError> {
-        if bytes.len() < 8 {
-            return Err(ConfigError::BufferTooSmall(8));
-        }
-        Ok(i64::from_le_bytes([
-            bytes[0], bytes[1], bytes[2], bytes[3], bytes[4], bytes[5], bytes[6], bytes[7],
-        ]))
-    }
-}
-
-impl ConfigValue for f32 {
-    type Getter<'a> = f32;
-    fn to_getter<'a>(&'a self) -> Self::Getter<'a> {
-        *self
-    }
-
-    fn to_bytes(&self, buf: &mut [u8]) -> Result<usize, ConfigError> {
-        if buf.len() < 4 {
-            return Err(ConfigError::BufferTooSmall(4));
-        }
-        buf[0..4].copy_from_slice(&self.to_le_bytes());
-        Ok(4)
-    }
-
-    fn from_bytes(bytes: &[u8]) -> Result<Self, ConfigError> {
-        if bytes.len() < 4 {
-            return Err(ConfigError::BufferTooSmall(4));
-        }
-        Ok(f32::from_le_bytes([bytes[0], bytes[1], bytes[2], bytes[3]]))
-    }
-}
-
-impl ConfigValue for f64 {
-    type Getter<'a> = f64;
-    fn to_getter<'a>(&'a self) -> Self::Getter<'a> {
-        *self
-    }
-
-    fn to_bytes(&self, buf: &mut [u8]) -> Result<usize, ConfigError> {
-        if buf.len() < 8 {
-            return Err(ConfigError::BufferTooSmall(8));
-        }
-        buf[0..8].copy_from_slice(&self.to_le_bytes());
-        Ok(8)
-    }
-
-    fn from_bytes(bytes: &[u8]) -> Result<Self, ConfigError> {
-        if bytes.len() < 8 {
-            return Err(ConfigError::BufferTooSmall(8));
-        }
-        Ok(f64::from_le_bytes([
-            bytes[0], bytes[1], bytes[2], bytes[3], bytes[4], bytes[5], bytes[6], bytes[7],
-        ]))
+        Ok(bytes[0] != 0)
     }
 }
 
