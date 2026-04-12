@@ -13,15 +13,29 @@ pub const MAGIC_KEY: &str = "__magic__";
 /// Reserved key for format version
 pub const FORMAT_VERSION_KEY: &str = "__format_version__";
 
-/// Compute FNV-1a 64-bit hash
-pub fn fnv1a_hash(s: &str) -> u64 {
+/// Compute FNV-1a 64-bit hash.
+///
+/// Implemented with an explicit byte loop so it matches
+/// `esp-wifi-caddy/src/storage.rs` and can be used in `const` assertions.
+pub const fn fnv1a_hash(s: &str) -> u64 {
+    let bytes = s.as_bytes();
     let mut hash = FNV_OFFSET;
-    for b in s.bytes() {
-        hash ^= b as u64;
+    let mut i = 0;
+    while i < bytes.len() {
+        hash ^= bytes[i] as u64;
         hash = hash.wrapping_mul(FNV_PRIME);
+        i += 1;
     }
     hash
 }
+
+// Golden values: must match `esp-wifi-caddy/src/storage.rs` (`fnv1a_hash` on the same UTF-8 bytes).
+const _: () = {
+    assert!(fnv1a_hash(MAGIC_KEY) == 0xcd3d2b3b18ccd31c);
+    assert!(fnv1a_hash(FORMAT_VERSION_KEY) == 0x63db463dc1cefc01);
+    assert!(fnv1a_hash("wifi_ssid") == 0xa81997565294b4fe);
+    assert!(fnv1a_hash("wifi_pass") == 0xe7235c50be9a4fe8);
+};
 
 /// Capitalize each word and join with the given separator.
 ///

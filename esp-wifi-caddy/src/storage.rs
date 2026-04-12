@@ -34,6 +34,13 @@ const MAGIC_KEY_U64: u64 = fnv1a_hash(b"__magic__");
 /// Key ID for format version (same as ConfigKey::FormatVersion in wifi-caddy-proc).
 const FORMAT_VERSION_KEY_U64: u64 = fnv1a_hash(b"__format_version__");
 
+// Golden values: must match `wifi-caddy-proc/src/utils.rs` (`fnv1a_hash` on the same UTF-8 bytes).
+// Use `::core::assert!`: this crate's `fmt.rs` maps `assert!` to `defmt::assert!`, which breaks const eval.
+const _: () = {
+    ::core::assert!(MAGIC_KEY_U64 == 0xcd3d2b3b18ccd31c);
+    ::core::assert!(FORMAT_VERSION_KEY_U64 == 0x63db463dc1cefc01);
+};
+
 /// Internal buffer size for `sequential_storage` fetch/store operations.
 ///
 /// This limits the maximum serialized size of any single config value.
