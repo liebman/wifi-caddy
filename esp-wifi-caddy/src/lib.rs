@@ -74,6 +74,14 @@ const MAX_PASS_LEN: usize = 64;
 /// Maximum AP SSID prefix length. Full SSID = prefix + 12 hex chars (MAC).
 const MAX_AP_SSID_PREFIX_LEN: usize = 20;
 
+/// Number of sockets per network stack (STA and AP each get this many).
+///
+/// 10 sockets covers: HTTP config portal (up to `HANDLER_TASKS` concurrent
+/// connections, default 4), DHCP server (1), DNS captive redirect (1), and
+/// leaves headroom for user TCP/UDP sockets. Increase if your application
+/// opens additional connections on the AP or STA stack.
+const STACK_SOCKET_COUNT: usize = 10;
+
 /// Delay before retrying STA connect after failure or disconnect (ms).
 const STA_RECONNECT_DELAY_MS: u64 = 5000;
 
@@ -207,13 +215,19 @@ pub async fn init(
     let (sta_stack, sta_runner) = embassy_net::new(
         sta_interface,
         sta_config,
-        mk_static!(StackResources<10>, StackResources::<10>::new()),
+        mk_static!(
+            StackResources<STACK_SOCKET_COUNT>,
+            StackResources::<STACK_SOCKET_COUNT>::new()
+        ),
         seed,
     );
     let (ap_stack, ap_runner) = embassy_net::new(
         ap_interface,
         ap_config,
-        mk_static!(StackResources<10>, StackResources::<10>::new()),
+        mk_static!(
+            StackResources<STACK_SOCKET_COUNT>,
+            StackResources::<STACK_SOCKET_COUNT>::new()
+        ),
         seed,
     );
     spawner
@@ -274,7 +288,8 @@ impl WifiRunner {
         use core::fmt::Write;
         let mut ap_ssid = WifiSsid::new();
 
-        let _ =write!(ap_ssid,
+        let _ = write!(
+            ap_ssid,
             "{}{:02x}{:02x}{:02x}{:02x}{:02x}{:02x}",
             self.ap_ssid_prefix,
             self.ap_mac[0],
