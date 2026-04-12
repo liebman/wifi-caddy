@@ -206,9 +206,13 @@ pub async fn init(
     );
     spawner
         .spawn(connection(controller, ap_mac, wifi_commands))
-        .ok();
-    spawner.spawn(ap_task(ap_runner)).ok();
-    spawner.spawn(sta_task(sta_runner)).ok();
+        .map_err(|_| Error::WifiInit)?;
+    spawner
+        .spawn(ap_task(ap_runner))
+        .map_err(|_| Error::WifiInit)?;
+    spawner
+        .spawn(sta_task(sta_runner))
+        .map_err(|_| Error::WifiInit)?;
     Ok((
         WifiStacks {
             sta: sta_stack,
