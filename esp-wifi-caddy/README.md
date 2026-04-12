@@ -27,7 +27,7 @@ HTTP portal for runtime configuration.
 │        ├─ AP stack              ├─ send APUp(prefix)            │
 │        └─ WifiRunner loop       └─ send APDown                  │
 │                                                                 │
-│  With feature "config":                                         │
+│  Config storage & HTTP portal:                                  │
 │  ┌──────────────────────────────────────────────┐               │
 │  │ Flash config storage (sequential-storage)    │               │
 │  │ HTTP config UI (edge-http on AP stack)        │               │
@@ -43,15 +43,14 @@ HTTP portal for runtime configuration.
 - **Configuration:** All configuration is via `WifiCaddyCommand`: send `StaUp(ssid, pass)` to
   enable STA with credentials, `APUp(prefix)` to enable the AP (full SSID = prefix + MAC), and
   `APDown` to disable the AP. The caddy starts with empty state until you send commands.
-- **Optional (feature `config`, default on):** In-tree config storage traits and flash storage,
-  plus captive HTTP (AP DHCP, HTTP server, config UI). No separate crates — enable or disable
-  with the `config` feature. Use with **wifi-caddy-proc** to derive config structs and
-  get `init_wifi`.
+- **Config storage:** In-tree config storage traits and flash-backed storage,
+  plus captive HTTP portal (AP DHCP, HTTP server, config UI). Use with
+  **wifi-caddy-proc** to derive config structs.
 
 ## Boot flow (with config + proc macro)
 
 1. `AppConfig::init_wifi(spawner, wifi, flash, "config")` initializes WiFi, mounts flash config storage from the named partition, loads saved config, and starts the HTTP config server on the AP stack.
-2. Your app receives `(WifiStacks, WifiCommandSender, ConfigHandle, config_rx)`.
+2. Your app receives `(WifiStacks, WifiCommandSender, ConfigHandle<AppConfig>, config_rx)` where `ConfigHandle` is a `&'static Mutex` alias.
 3. Send `StaUp(ssid, pass)` to connect, `APUp(prefix)` to enable the AP with the config portal, `APDown` to disable it.
 4. Use the returned channel receiver (`config_rx`) to react when settings are updated via the portal.
 
@@ -104,7 +103,7 @@ pub struct AppConfig {
 Then in your `main`:
 
 ```rust,ignore
-let (wifi_stacks, wifi_sender, config_handle, config_rx) =
+let (wifi_stacks, wifi_sender, config, config_rx) =
     esp_wifi_caddy::wifi_init!(AppConfig, spawner, wifi, flash, "config")
         .expect("wifi_init");
 ```
@@ -114,9 +113,9 @@ This single call:
 2. Mounts flash config storage from the named partition.
 3. Loads saved config values.
 4. Starts the HTTP config server on the AP stack (with DHCP and optional captive DNS).
-5. If `#[config_notify]` is present, creates a config-update channel and returns the receiver as the 4th tuple element.
+5. Initializes the config-update channel (capacity defaults to the number of config pages, or `#[config_notify(cap = N)]`) and returns the receiver as the 4th tuple element.
 
-Use `config_handle.config()` to get the shared `Mutex<AppConfig>` for your tasks.
+`config` is a `&'static Mutex<AppConfig>` — pass it directly to your tasks.
 Use `config_rx.receive().await` in a task loop to react to config changes.
 
 The config UI supports multiple tabs when you use `page = "Name"` on `#[config_form]`. Each tab
@@ -142,16 +141,24 @@ selectors match.
       (nav_left)  ...  (nav_right)
     </div>
     <div class="content">
-      <div class="message">           -- flash messages (save/load)
+      <div id="message" class="message"></div>   -- flash messages (save/load)
       <div class="config-tabs">       -- tab bar (only if >1 page)
         <button class="config-tab active">
       </div>
       <div class="config-tab-panel">
-        <div class="config-loading-overlay">
-        <form>
-          <fieldset> / <legend>
-          <div class="form-group"> / <label> / <input>
-          <div class="button-group">  -- Reload + Save buttons
+        <div class="config-loading-overlay"> …
+        <form id="configForm-…">
+          <div class="config-form">
+            <fieldset class="config-form-fieldset">
+              <legend class="config-form-legend"> …
+              <div class="config-form-group config-form-field-…">
+                <label class="config-form-label"> …
+                <input class="config-form-input …">
+                <div class="config-form-help"> …
+              </div>
+            </fieldset>
+          </div>
+          <div class="button-group">  -- Reload + Save
         </form>
       </div>
     </div>
@@ -168,10 +175,10 @@ selectors match.
 | `header`, `header h1`, `header p` | Purple header bar |
 | `.nav`, `.nav a` | Navigation bar under header |
 | `.content` | Form content area |
-| `fieldset`, `legend` | Field groups |
-| `.form-group`, `label` | Form field wrappers |
-| `input[type="text"]`, `input[type="password"]`, `input[type="number"]` | Text inputs |
-| `.help-text` | Field help text |
+| `fieldset.config-form-fieldset`, `legend.config-form-legend` | Field groups |
+| `.config-form`, `.config-form-group`, `.config-form-label` | Form layout and field wrappers |
+| `.config-form-input`, `input[type="text"]`, `input[type="password"]`, `input[type="number"]` | Text inputs |
+| `.config-form-help` | Field help text |
 | `.button-group` | Save/reload button row |
 | `button[type="submit"]` | Save button |
 | `button[type="button"]` | Reload button |
@@ -207,36 +214,44 @@ attributes (`#[config_store]`, `#[config_form]`, `#[config_server]`, `#[config_n
 | `WifiCaddyCommand` | `StaUp(ssid, pass)`, `APUp(prefix)`, `APDown` |
 | `mk_static!` | Helper macro to create a `&'static T` from a value |
 
-### Config feature (`config`)
+### Generated types (from `#[derive(WifiCaddyConfig)]`)
+
+The `WifiCaddyConfig` derive macro emits several types into your crate's namespace.
+These are used directly in application code:
+
+| Type | Description |
+|------|-------------|
+| `ConfigChange` | `EnumSetType` enum with one variant per `notify = "..."` group (e.g. `Wifi`, `Example`). Use with `changed.contains(ConfigChange::Wifi)` |
+| `ConfigUpdateReceiver` | Type alias for `&'static Channel<..., EnumSet<ConfigChange>, N>`. Passed to tasks that react to config changes |
+| `ConfigUpdateChannel` | The underlying channel type (usually not referenced directly) |
+| `ConfigKey` | Enum mapping field names to FNV-1a hash keys for storage |
+| `<ConfigStruct><Page>Config` (e.g. `AppConfigMainConfig`) | Per-page DTO structs for JSON serialization (internal, may be renamed) |
+
+### Config types (`wifi_init!`)
 
 | Item | Description |
 |------|-------------|
-| `ConfigHandle` | Shared config handle returned by `wifi_init!`; use `.config()` to get the mutex for tasks |
+| `ConfigHandle<C>` | Type alias for `&'static Mutex<CriticalSectionRawMutex, C>`, returned by `wifi_init!` |
 | `ConfigError` | Error type from `init_wifi` (e.g. backend, invalid data) |
 | `config_storage::ConfigStorage` | Trait to implement an alternative storage backend |
-| `config_storage::ConfigValue` | Trait to implement for custom field types in your config struct |
-| `config_storage::JsSaveKind` | Enum used in `ConfigValue` impls (String, Int, Float) |
+| `config_storage::ConfigValue` | Trait to implement for custom field types in your config struct (serialization + getter) |
 | `config_storage::MAX_VALUE_SIZE` | Max bytes per stored value (used by `ConfigStorage` default impls) |
 
 ## Features
 
 | Feature | Default | Description |
 |---------|---------|-------------|
-| `defmt` | yes | defmt logging |
+| `defmt` | no | defmt logging |
 | `log` | no | log crate logging (mutually exclusive with `defmt`) |
-| `config` | yes | In-tree config storage (traits, flash backend) and captive HTTP (DHCP, HTTP server, config UI) |
-| `captive` | yes | DNS captive-portal redirect on AP; requires `config` |
-| `partition-table` | yes | Resolve config partition by name from the ESP-IDF partition table |
+| `captive` | yes | DNS captive-portal redirect on AP |
+| `debug-server` | no | Additional HTTP server on the STA interface (forwards to `wifi-caddy`) |
 | `nightly` | no | Enables the `impl_trait_in_assoc_type` nightly feature. **Enable this if `embassy-executor` is built with its `nightly` feature**, so that task and async code compiles correctly. |
 
 **Feature dependencies:**
 
-- `captive` requires `config` — the DNS redirect serves the config portal.
-- `partition-table` is used by `run_inner_by_partition` to look up the flash
-  partition by name. Without it, you must provide the flash range manually via
-  `run_inner`.
-- To minimize binary size, disable features you don't need:
-  `default-features = false, features = ["config"]` gives config without captive DNS.
+- `defmt` and `log` are mutually exclusive — enable at most one.
+- `captive` forwards to `wifi-caddy`'s `captive` feature (captive DNS on the AP).
+- To build without captive DNS, set `default-features = false` on `esp-wifi-caddy` (or disable `captive` explicitly).
 
 ## Prerequisites
 

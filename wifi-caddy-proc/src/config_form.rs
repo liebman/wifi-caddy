@@ -1,12 +1,130 @@
-//! Config form codegen for `WifiCaddyConfig`: HTML/JS for the config UI.
+//! Config form codegen for `WifiCaddyConfig`: generates the entire config HTML page
+//! as a single `&'static str` at compile time.
 
+use crate::field_attrs::{ParsedFormAttrs, parse_config_form_attr_into};
 use crate::utils::{
     consume_meta_value, escape_html, escape_js_str, humanize_label, page_name_to_js_id,
-    page_name_to_suffix, try_parse_lit_str,
+    try_parse_lit_str,
 };
 use proc_macro2::TokenStream;
-use quote::{format_ident, quote};
+use quote::quote;
 use syn::DeriveInput;
+
+const CONFIG_PAGE_CSS: &str = include_str!("config_page.css");
+const CONFIG_PAGE_TAB_SCRIPT: &str = include_str!("config_page_script.js");
+
+// ---------------------------------------------------------------------------
+// Type-info lookup (replaces ConfigValue form constants)
+// ---------------------------------------------------------------------------
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum SaveKind {
+    String,
+    Int,
+    Float,
+}
+
+struct TypeInfo {
+    input_type: &'static str,
+    is_float: bool,
+    save_kind: SaveKind,
+}
+
+fn known_type_info_by_name(name: &str) -> Option<TypeInfo> {
+    match name {
+        "u8" | "u16" | "u32" | "u64" | "i8" | "i16" | "i32" | "i64" | "usize" | "isize" => {
+            Some(TypeInfo {
+                input_type: "number",
+                is_float: false,
+                save_kind: SaveKind::Int,
+            })
+        }
+        "f32" | "f64" => Some(TypeInfo {
+            input_type: "number",
+            is_float: true,
+            save_kind: SaveKind::Float,
+        }),
+        "String" => Some(TypeInfo {
+            input_type: "text",
+            is_float: false,
+            save_kind: SaveKind::String,
+        }),
+        _ => None,
+    }
+}
+
+fn known_type_info(ty: &syn::Type) -> Option<TypeInfo> {
+    if let syn::Type::Path(tp) = ty {
+        if let Some(seg) = tp.path.segments.last() {
+            return known_type_info_by_name(&seg.ident.to_string());
+        }
+    }
+    None
+}
+
+fn parse_save_as(s: &str) -> Option<SaveKind> {
+    match s {
+        "string" => Some(SaveKind::String),
+        "int" => Some(SaveKind::Int),
+        "float" => Some(SaveKind::Float),
+        _ => None,
+    }
+}
+
+fn infer_save_kind(input_type: &str) -> SaveKind {
+    match input_type {
+        "number" | "range" => SaveKind::Int,
+        _ => SaveKind::String,
+    }
+}
+
+struct ResolvedInfo {
+    input_type: String,
+    is_float: bool,
+    save_kind: SaveKind,
+}
+
+fn resolve_field_info(f: &FormField) -> Result<ResolvedInfo, String> {
+    let base = f
+        .prim_type
+        .as_deref()
+        .and_then(known_type_info_by_name)
+        .or_else(|| known_type_info(&f.field_type));
+
+    if let Some(info) = base {
+        return Ok(ResolvedInfo {
+            input_type: f
+                .input_type
+                .clone()
+                .unwrap_or_else(|| info.input_type.to_string()),
+            is_float: info.is_float,
+            save_kind: f
+                .save_as
+                .as_deref()
+                .and_then(parse_save_as)
+                .unwrap_or(info.save_kind),
+        });
+    }
+
+    let input_type = f.input_type.clone().ok_or_else(|| {
+        format!(
+            "field `{}` has unrecognized type; add #[config_form(input_type = \"...\")] or #[config_form(prim_type = \"...\")]",
+            f.name
+        )
+    })?;
+    let save_kind = f
+        .save_as
+        .as_deref()
+        .and_then(parse_save_as)
+        .unwrap_or_else(|| infer_save_kind(&input_type));
+    let is_float = save_kind == SaveKind::Float;
+
+    Ok(ResolvedInfo {
+        input_type,
+        is_float,
+        save_kind,
+    })
+}
 
 // ---------------------------------------------------------------------------
 // Intermediate representation
@@ -25,26 +143,84 @@ struct FormField {
     min: Option<String>,
     max: Option<String>,
     input_type: Option<String>,
+    prim_type: Option<String>,
+    save_as: Option<String>,
+}
+
+struct UiAttrs {
+    page_heading: String,
+    title: String,
+    subtitle: String,
+    nav_left: String,
+    nav_right: String,
+    extra_css: String,
+    default_group: Option<String>,
 }
 
 // ---------------------------------------------------------------------------
 // Attribute helpers
 // ---------------------------------------------------------------------------
 
-/// Converts a parsed expression (min/max attr value) to a string for HTML attributes.
-/// Handles LitInt (including negative via Unary minus), LitFloat, and LitStr.
-fn expr_to_min_max_string(expr: &syn::Expr) -> Option<String> {
-    match expr {
-        syn::Expr::Unary(unary) if matches!(unary.op, syn::UnOp::Neg(_)) => {
-            expr_to_min_max_string(&unary.expr).map(|s| format!("-{s}"))
+// ---------------------------------------------------------------------------
+// Parse #[config_ui(...)] from struct-level attributes
+// ---------------------------------------------------------------------------
+
+fn parse_ui_attrs(attrs: &[syn::Attribute]) -> UiAttrs {
+    let mut page_heading = String::from("Configuration");
+    let mut title = String::from("Configuration");
+    let mut subtitle = String::new();
+    let mut nav_left = String::from("<span>Configuration</span>");
+    let mut nav_right = String::from("<span></span>");
+    let mut extra_css = String::new();
+    let mut default_group: Option<String> = None;
+
+    for attr in attrs {
+        if attr.path().is_ident("config_ui") {
+            let _ = attr.parse_nested_meta(|meta| {
+                if meta.path.is_ident("page_heading") {
+                    if let Some(v) = try_parse_lit_str(&meta) {
+                        page_heading = v;
+                    }
+                } else if meta.path.is_ident("title") {
+                    if let Some(v) = try_parse_lit_str(&meta) {
+                        title = v;
+                    }
+                } else if meta.path.is_ident("subtitle") {
+                    if let Some(v) = try_parse_lit_str(&meta) {
+                        subtitle = v;
+                    }
+                } else if meta.path.is_ident("nav_left") {
+                    if let Some(v) = try_parse_lit_str(&meta) {
+                        nav_left = v;
+                    }
+                } else if meta.path.is_ident("nav_right") {
+                    if let Some(v) = try_parse_lit_str(&meta) {
+                        nav_right = v;
+                    }
+                } else if meta.path.is_ident("extra_css") {
+                    if let Some(v) = try_parse_lit_str(&meta) {
+                        extra_css = v;
+                    }
+                } else if meta.path.is_ident("default_group") {
+                    if let Some(v) = try_parse_lit_str(&meta) {
+                        default_group = Some(v);
+                    }
+                } else {
+                    consume_meta_value(&meta);
+                }
+                Ok(())
+            });
         }
-        syn::Expr::Lit(expr_lit) => match &expr_lit.lit {
-            syn::Lit::Int(i) => i.base10_parse::<i64>().ok().map(|n| n.to_string()),
-            syn::Lit::Float(f) => f.base10_parse::<f64>().ok().map(|n| n.to_string()),
-            syn::Lit::Str(s) => Some(s.value()),
-            _ => None,
-        },
-        _ => None,
+    }
+
+    UiAttrs {
+        page_heading,
+        title,
+        subtitle,
+        nav_left,
+        nav_right,
+        extra_css,
+        default_group,
     }
 }
 
@@ -60,76 +236,35 @@ fn parse_form_fields(data: &syn::DataStruct) -> Vec<FormField> {
         let field_name = ident.to_string();
 
         let mut has_config_form = false;
-        let mut skip = false;
-        let mut page = String::from("main");
-        let mut fieldset: Option<String> = None;
-        let mut hidden = false;
-        let mut label = humanize_label(&field_name);
-        let mut help = String::new();
-        let mut class: Option<String> = None;
-        let mut input_type: Option<String> = None;
-        let mut min: Option<String> = None;
-        let mut max: Option<String> = None;
+        let mut form = ParsedFormAttrs::default();
 
         for attr in &field.attrs {
             if attr.path().is_ident("config_form") {
                 has_config_form = true;
-                let _ = attr.parse_nested_meta(|meta| {
-                    if meta.path.is_ident("skip") {
-                        skip = true;
-                    } else if meta.path.is_ident("hidden") {
-                        hidden = true;
-                    } else if meta.path.is_ident("page") {
-                        if let Some(v) = try_parse_lit_str(&meta) {
-                            page = v;
-                        }
-                    } else if meta.path.is_ident("fieldset") {
-                        fieldset = try_parse_lit_str(&meta);
-                    } else if meta.path.is_ident("label") {
-                        if let Some(v) = try_parse_lit_str(&meta) {
-                            label = v;
-                        }
-                    } else if meta.path.is_ident("help") {
-                        if let Some(v) = try_parse_lit_str(&meta) {
-                            help = v;
-                        }
-                    } else if meta.path.is_ident("class") {
-                        class = try_parse_lit_str(&meta);
-                    } else if meta.path.is_ident("input_type") {
-                        input_type = try_parse_lit_str(&meta);
-                    } else if meta.path.is_ident("min") {
-                        if let Ok(expr) = meta.value().and_then(|v| v.parse::<syn::Expr>()) {
-                            min = expr_to_min_max_string(&expr);
-                        }
-                    } else if meta.path.is_ident("max") {
-                        if let Ok(expr) = meta.value().and_then(|v| v.parse::<syn::Expr>()) {
-                            max = expr_to_min_max_string(&expr);
-                        }
-                    } else {
-                        // Consume unrecognized meta so the parse stream advances to next attr
-                        consume_meta_value(&meta);
-                    }
-                    Ok(())
-                });
+                let _ = parse_config_form_attr_into(attr, &mut form);
             }
         }
 
-        if !has_config_form || skip {
+        if !has_config_form || form.skip {
             continue;
         }
 
+        let label = form.label.unwrap_or_else(|| humanize_label(&field_name));
+
         form_fields.push(FormField {
             name: field_name,
-            page,
-            fieldset,
-            hidden,
+            page: form.page,
+            fieldset: form.fieldset,
+            hidden: form.hidden,
             label,
-            help,
-            class,
+            help: form.help,
+            class: form.class,
             field_type: field.ty.clone(),
-            min,
-            max,
-            input_type,
+            min: form.min,
+            max: form.max,
+            input_type: form.input_type,
+            prim_type: form.prim_type,
+            save_as: form.save_as,
         });
     }
 
@@ -137,16 +272,11 @@ fn parse_form_fields(data: &syn::DataStruct) -> Vec<FormField> {
 }
 
 // ---------------------------------------------------------------------------
-// Phase 2 – HTML segment generation
+// Phase 2 – HTML generation (fully static string per page)
 // ---------------------------------------------------------------------------
 
-/// Generate the HTML segments for a visible (non-hidden) input field.
-/// Returns several &str fragments that are concatenated at runtime in the browser.
-fn gen_visible_input_html(f: &FormField) -> Vec<TokenStream> {
-    let mut segs = Vec::new();
-
+fn gen_visible_input_html(f: &FormField, info: &ResolvedInfo) -> String {
     let fname = &f.name;
-    let ftype = &f.field_type;
     let label_esc = escape_html(&f.label);
     let field_class = f
         .class
@@ -165,103 +295,75 @@ fn gen_visible_input_html(f: &FormField) -> Vec<TokenStream> {
         .map(|s| format!(r#" max="{}""#, escape_html(s)))
         .unwrap_or_default();
     let help_esc = escape_html(&f.help);
-
-    // Opening div + label + `<input type="`
-    let html_prefix = format!(
-        r#"<div class="{}"><label for="{}" class="config-form-label" style="color:var(--config-form-label-color,#555)">{}</label><input type=""#,
-        wrapper_class, fname, label_esc
-    );
-    let prefix_lit = syn::LitStr::new(&html_prefix, proc_macro2::Span::call_site());
-    segs.push(quote! { #prefix_lit });
-
-    // input type: either a literal (e.g. "password") or a const from ConfigValue
-    if let Some(ref it) = f.input_type {
-        let input_lit = syn::LitStr::new(it, proc_macro2::Span::call_site());
-        segs.push(quote! { #input_lit });
-    } else {
-        segs.push(quote! {
-            <#ftype as wifi_caddy::config_storage::ConfigValue>::DEFAULT_INPUT_TYPE
-        });
-    }
-
-    // step="any" for floats
-    segs.push(quote! {
-        if <#ftype as wifi_caddy::config_storage::ConfigValue>::IS_FLOAT {
-            " step=\"any\""
-        } else {
-            ""
-        }
-    });
-
-    // required attribute (omitted for password inputs)
-    let req_str = match f.input_type.as_deref() {
+    let step_attr = if info.is_float { r#" step="any""# } else { "" };
+    let req_attr = match f.input_type.as_deref() {
         Some("password") => "",
         _ => " required",
     };
-    let req_lit = syn::LitStr::new(req_str, proc_macro2::Span::call_site());
-    segs.push(quote! { #req_lit });
 
-    // Closing attributes, help div, closing div
-    let html_suffix = format!(
-        r#"" id="{}" name="{}" class="config-form-input config-form-input-{}{}" style="border:var(--config-form-input-border,2px solid #ddd)"{}{}><div class="config-form-help" style="color:var(--config-form-help-color,#888)">{}</div></div>"#,
-        fname, fname, fname, field_class, min_attr, max_attr, help_esc
-    );
-    let suffix_lit = syn::LitStr::new(&html_suffix, proc_macro2::Span::call_site());
-    segs.push(quote! { #suffix_lit });
-
-    segs
+    {
+        let mut h = String::new();
+        h.push_str(&format!(r#"<div class="{wrapper_class}">"#));
+        h.push_str(&format!(
+            r#"<label for="{fname}" class="config-form-label" style="color:var(--config-form-label-color,#555)">{label_esc}</label>"#
+        ));
+        h.push_str(&format!(
+            r#"<input type="{}"{step_attr}{req_attr} id="{fname}" name="{fname}" class="config-form-input config-form-input-{fname}{field_class}" style="border:var(--config-form-input-border,2px solid #ddd)"{min_attr}{max_attr}>"#,
+            info.input_type
+        ));
+        h.push_str(&format!(
+            r#"<div class="config-form-help" style="color:var(--config-form-help-color,#888)">{help_esc}</div>"#
+        ));
+        h.push_str("</div>");
+        h
+    }
 }
 
-/// Build the HTML segment expression array for one page.
-fn gen_html_segments(fields: &[FormField]) -> Vec<TokenStream> {
-    let mut segs: Vec<TokenStream> = Vec::new();
-    segs.push(quote! { "<div class=\"config-form\">" });
+fn gen_html_string(fields: &[FormField]) -> Result<String, String> {
+    let mut html = String::from("<div class=\"config-form\">");
 
     let mut current_fieldset: Option<&str> = None;
     for f in fields {
-        // Emit <fieldset><legend> when fieldset changes; close previous fieldset first
-        let fieldset_changed = current_fieldset.as_deref() != f.fieldset.as_deref();
+        let fieldset_changed = current_fieldset != f.fieldset.as_deref();
         if fieldset_changed {
             if current_fieldset.is_some() {
-                segs.push(quote! { "</fieldset>" });
+                html.push_str("</fieldset>");
             }
             current_fieldset = f.fieldset.as_deref();
             if let Some(legend) = current_fieldset {
-                let legend_html = format!(
+                html.push_str(&format!(
                     "<fieldset class=\"config-form-fieldset\" style=\"border:var(--config-form-fieldset-border,2px solid #e0e0e0)\"><legend class=\"config-form-legend\" style=\"color:var(--config-form-legend-color,#667eea)\">{}</legend>",
                     escape_html(legend)
-                );
-                let lit = syn::LitStr::new(&legend_html, proc_macro2::Span::call_site());
-                segs.push(quote! { #lit });
+                ));
             }
         }
 
         if f.hidden {
-            // Hidden fields: single <input type="hidden">
             let name_esc = escape_html(&f.name);
-            let hidden_html = format!(r#"<input type="hidden" id="{0}" name="{0}">"#, name_esc);
-            let lit = syn::LitStr::new(&hidden_html, proc_macro2::Span::call_site());
-            segs.push(quote! { #lit });
+            html.push_str(&format!(
+                r#"<input type="hidden" id="{0}" name="{0}">"#,
+                name_esc
+            ));
         } else {
-            segs.extend(gen_visible_input_html(f));
+            let info = resolve_field_info(f)?;
+            html.push_str(&gen_visible_input_html(f, &info));
         }
     }
 
     if current_fieldset.is_some() {
-        segs.push(quote! { "</fieldset>" });
+        html.push_str("</fieldset>");
     }
-    segs.push(quote! { "</div>" });
+    html.push_str("</div>");
 
-    segs
+    Ok(html)
 }
 
 // ---------------------------------------------------------------------------
-// Phase 3 – JS segment generation
+// Phase 3 – JS generation (fully static string per page)
 // ---------------------------------------------------------------------------
 
-/// Build the JS segment expression array for one page: loadConfig_<page> + saveConfig_<page>.
-fn gen_js_segments(page_name: &str, fields: &[FormField]) -> Vec<TokenStream> {
-    let mut segs: Vec<TokenStream> = Vec::new();
+fn gen_js_string(page_name: &str, fields: &[FormField]) -> Result<String, String> {
+    let mut js = String::new();
     let page_js_id = page_name_to_js_id(page_name);
     let page_esc = escape_js_str(page_name);
     let form_id = format!("configForm-{}", page_js_id);
@@ -269,83 +371,171 @@ fn gen_js_segments(page_name: &str, fields: &[FormField]) -> Vec<TokenStream> {
     let load_fn = format!("loadConfig_{}", page_js_id);
     let save_fn = format!("saveConfig_{}", page_js_id);
 
-    // loadConfig_<page> prologue: fetch JSON and populate form fields
-    let js_prologue = format!(
+    js.push_str(&format!(
         "const CONFIG_PAGE_{0}=\"{1}\";const CONFIG_URL_{0}=\"/config-group/\"+CONFIG_PAGE_{0};async function {2}(){{const response=await fetch(CONFIG_URL_{0});if(!response.ok)throw new Error(\"HTTP \"+response.status);const data=await response.json();",
         page_js_id, page_esc, load_fn
-    );
-    let prologue_lit = syn::LitStr::new(&js_prologue, proc_macro2::Span::call_site());
-    segs.push(quote! { #prologue_lit });
+    ));
 
-    // Per-field load: `el.value = data[name] ?? ""`
     for f in fields {
         let name_js = escape_js_str(&f.name);
         let fname = &f.name;
-        let load_stmt = format!(
+        js.push_str(&format!(
             "var el=document.getElementById(\"{0}\");if(el)el.value=data[\"{1}\"]!==undefined?String(data[\"{1}\"]):\"\";",
             fname, name_js
-        );
-        let load_lit = syn::LitStr::new(&load_stmt, proc_macro2::Span::call_site());
-        segs.push(quote! { #load_lit });
+        ));
     }
 
-    // saveConfig_<page> prologue: read FormData into `data` object
-    let save_start = format!(
+    js.push_str(&format!(
         "}} async function {0}(){{const form=document.getElementById(\"{1}\");if(!form)return;const formData=new FormData(form);const data={{}};",
         save_fn, form_id_esc
-    );
-    let save_start_lit = syn::LitStr::new(&save_start, proc_macro2::Span::call_site());
-    segs.push(quote! { #save_start_lit });
+    ));
 
-    // Per-field save: JS_SAVE_KIND picks String/Int/Float for formData→data conversion
     for f in fields {
         let name_js = escape_js_str(&f.name);
         let fname = &f.name;
-        let ftype = &f.field_type;
-        let str_line = format!("data[\"{}\"]=formData.get(\"{}\")??\"\";", name_js, fname);
-        let int_line = format!(
-            "data[\"{}\"]=parseInt(formData.get(\"{}\"),10);",
-            name_js, fname
-        );
-        let float_line = format!(
-            "data[\"{}\"]=parseFloat(formData.get(\"{}\"));",
-            name_js, fname
-        );
-        let str_lit = syn::LitStr::new(&str_line, proc_macro2::Span::call_site());
-        let int_lit = syn::LitStr::new(&int_line, proc_macro2::Span::call_site());
-        let float_lit = syn::LitStr::new(&float_line, proc_macro2::Span::call_site());
-        segs.push(quote! {
-            match <#ftype as wifi_caddy::config_storage::ConfigValue>::JS_SAVE_KIND {
-                wifi_caddy::config_storage::JsSaveKind::String => #str_lit,
-                wifi_caddy::config_storage::JsSaveKind::Int => #int_lit,
-                wifi_caddy::config_storage::JsSaveKind::Float => #float_lit,
-            }
-        });
+        let info = resolve_field_info(f)?;
+        match info.save_kind {
+            SaveKind::String => js.push_str(&format!(
+                "data[\"{}\"]=formData.get(\"{}\")??\"\";",
+                name_js, fname
+            )),
+            SaveKind::Int => js.push_str(&format!(
+                "data[\"{}\"]=parseInt(formData.get(\"{}\"),10);",
+                name_js, fname
+            )),
+            SaveKind::Float => js.push_str(&format!(
+                "data[\"{}\"]=parseFloat(formData.get(\"{}\"));",
+                name_js, fname
+            )),
+        }
     }
 
-    // saveConfig_<page> epilogue: POST data to config endpoint; register both fns on window
-    let fetch_line = format!(
-        "const response=await fetch(CONFIG_URL_{0}+\"?set=\"+encodeURIComponent(JSON.stringify(data)),{{method:\"GET\"}});if(!response.ok)throw new Error(await response.text()||\"HTTP \"+response.status);}};window.{1}=window.{1}||{1};window.{2}=window.{2}||{2};",
+    js.push_str(&format!(
+        concat!(
+            "const response=await fetch(",
+            "CONFIG_URL_{0}+\"?set=\"+encodeURIComponent(JSON.stringify(data)),",
+            "{{method:\"GET\"}}",
+            ");",
+            "if(!response.ok)throw new Error(await response.text()||\"HTTP \"+response.status);",
+            "}};",
+            "window.{1}=window.{1}||{1};",
+            "window.{2}=window.{2}||{2};",
+        ),
         page_js_id, load_fn, save_fn
-    );
-    let fetch_lit = syn::LitStr::new(&fetch_line, proc_macro2::Span::call_site());
-    segs.push(quote! { #fetch_lit });
+    ));
 
-    segs
+    Ok(js)
+}
+
+// ---------------------------------------------------------------------------
+// Phase 4 – full page assembly
+// ---------------------------------------------------------------------------
+
+fn gen_full_page(ui: &UiAttrs, pages: &[(String, Vec<FormField>)]) -> Result<String, String> {
+    let resolved_default = ui
+        .default_group
+        .as_deref()
+        .or_else(|| pages.first().map(|(name, _)| name.as_str()))
+        .unwrap_or("main");
+    let default_id = page_name_to_js_id(resolved_default);
+    let show_tabs = pages.len() > 1;
+
+    let mut page = String::with_capacity(8192);
+
+    // Head
+    page.push_str("<!DOCTYPE html><html lang=\"en\"><head><meta charset=\"UTF-8\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1.0\"><title>");
+    page.push_str(&escape_html(&ui.title));
+    page.push_str("</title><style>");
+    page.push_str(CONFIG_PAGE_CSS);
+    page.push_str(&ui.extra_css);
+    page.push_str("</style></head><body><div class=\"container\"><header><h1>");
+    page.push_str(&escape_html(&ui.page_heading));
+    page.push_str("</h1><p>");
+    page.push_str(&escape_html(&ui.subtitle));
+    page.push_str("</p></header><div class=\"nav\">");
+    page.push_str(&ui.nav_left);
+    page.push_str(&ui.nav_right);
+    page.push_str("</div><div class=\"content\"><div id=\"message\" class=\"message\"></div>");
+
+    // Tab bar (only for multi-page)
+    if show_tabs {
+        page.push_str("<div class=\"config-tabs\">");
+        for (page_name, _) in pages {
+            let id = page_name_to_js_id(page_name);
+            let active_class = if id == default_id {
+                "config-tab active"
+            } else {
+                "config-tab"
+            };
+            page.push_str(&format!(
+                r#"<button type="button" class="{}" data-page="{}">{}</button>"#,
+                active_class,
+                id,
+                escape_html(page_name),
+            ));
+        }
+        page.push_str("</div>");
+    }
+
+    // Per-page panels
+    for (page_name, fields) in pages {
+        let id = page_name_to_js_id(page_name);
+        let display = if id == default_id {
+            ""
+        } else {
+            " style=\"display:none\""
+        };
+        page.push_str(&format!(
+            r#"<div class="config-tab-panel" id="panel-{}"{}>"#,
+            id, display
+        ));
+        page.push_str(&format!(
+            r#"<div class="config-loading-overlay" id="loading-{}"><span class="loading loading-overlay"></span>Loading...</div>"#,
+            id
+        ));
+        page.push_str(&format!(r#"<form id="configForm-{}">"#, id));
+
+        let form_html = gen_html_string(fields)?;
+        page.push_str(&form_html);
+
+        page.push_str(r#"<div class="button-group"><button type="button" class="reloadBtn">Reload</button><button type="submit">Save Configuration</button></div></form>"#);
+        page.push_str("</div>");
+    }
+
+    // Close content + container divs
+    page.push_str("</div></div>");
+
+    // Per-page JS
+    page.push_str("<script>");
+    for (page_name, fields) in pages {
+        let js = gen_js_string(page_name, fields)?;
+        page.push_str(&js);
+    }
+    page.push_str("</script>");
+
+    // Tab script + default page activation
+    page.push_str("<script>");
+    page.push_str(CONFIG_PAGE_TAB_SCRIPT);
+    page.push_str(&format!(
+        "var defaultPage=\"{}\";window.addEventListener('load', function() {{ switchTab(defaultPage); }});",
+        escape_js_str(&default_id)
+    ));
+    page.push_str("</script></body></html>");
+
+    Ok(page)
 }
 
 // ---------------------------------------------------------------------------
 // Entry point
 // ---------------------------------------------------------------------------
 
-/// Builds the form half of `WifiCaddyConfig`: HTML and JS for the config UI.
+/// Builds the form half of `WifiCaddyConfig`: generates the entire config HTML page
+/// as a single `&'static str` at compile time.
 ///
-/// Reads field-level `#[config_form(...)]`: `skip`, `hidden`, `fieldset = "Legend"`, `label`,
-/// `help`, `class`, `input_type` (e.g. `"password"` for string fields), `min`/`max` for numerics.
-/// A field is only in the form if it has `#[config_form]`.
+/// Reads struct-level `#[config_ui(...)]` attributes for page chrome (title, heading, etc.)
+/// and field-level `#[config_form(...)]` for form fields.
 ///
-/// Emits: const `FORM_HTML_<PAGE>_SEGMENTS` and `FORM_JS_<PAGE>_SEGMENTS` (arrays of `&str`),
-/// and `ConfigFormGen` with `html_segments_for_group` / `js_segments_for_group` for zero-allocation streaming.
+/// Emits: `const CONFIG_PAGE: &str` (one complete HTML document) and a `ConfigFormGen` impl.
 pub fn derive_config_form_impl(input: &DeriveInput) -> TokenStream {
     let name = &input.ident;
 
@@ -354,13 +544,17 @@ pub fn derive_config_form_impl(input: &DeriveInput) -> TokenStream {
             .to_compile_error();
     };
 
+    let ui = parse_ui_attrs(&input.attrs);
     let form_fields = parse_form_fields(data);
 
-    // Group fields by page name
-    let mut pages: std::collections::BTreeMap<String, Vec<FormField>> =
-        std::collections::BTreeMap::new();
+    let mut pages: Vec<(String, Vec<FormField>)> = Vec::new();
     for f in form_fields {
-        pages.entry(f.page.clone()).or_default().push(f);
+        let page_name = f.page.clone();
+        if let Some(entry) = pages.iter_mut().find(|(name, _)| *name == page_name) {
+            entry.1.push(f);
+        } else {
+            pages.push((page_name, vec![f]));
+        }
     }
 
     // Validate: no fieldset spans multiple pages
@@ -387,62 +581,21 @@ pub fn derive_config_form_impl(input: &DeriveInput) -> TokenStream {
         }
     }
 
-    let page_names: Vec<&str> = pages.keys().map(String::as_str).collect();
-    let page_names_lits: Vec<syn::LitStr> = page_names
-        .iter()
-        .map(|s| syn::LitStr::new(s, proc_macro2::Span::call_site()))
-        .collect();
+    let full_page = match gen_full_page(&ui, &pages) {
+        Ok(s) => s,
+        Err(msg) => return syn::Error::new_spanned(input, msg).to_compile_error(),
+    };
 
-    let mut const_html_defs = Vec::new();
-    let mut const_js_defs = Vec::new();
-    let mut html_match_arms = Vec::new();
-    let mut js_match_arms = Vec::new();
+    let page_lit = syn::LitStr::new(&full_page, proc_macro2::Span::call_site());
 
-    for (page_name, fields) in &pages {
-        let suffix = page_name_to_suffix(page_name);
-        let html_const_name = format_ident!("FORM_HTML_{}_SEGMENTS", suffix);
-        let js_const_name = format_ident!("FORM_JS_{}_SEGMENTS", suffix);
-
-        let html_segment_exprs = gen_html_segments(fields);
-        let js_segment_exprs = gen_js_segments(page_name, fields);
-
-        const_html_defs.push(quote! {
-            const #html_const_name: &[&str] = &[#(#html_segment_exprs),*];
-        });
-        const_js_defs.push(quote! {
-            const #js_const_name: &[&str] = &[#(#js_segment_exprs),*];
-        });
-
-        let page_lit = syn::LitStr::new(page_name, proc_macro2::Span::call_site());
-        html_match_arms.push(quote! { #page_lit => Some(Self::#html_const_name), });
-        js_match_arms.push(quote! { #page_lit => Some(Self::#js_const_name), });
-    }
-
-    let default_arm = quote! { _ => None };
     quote! {
         impl #name {
-            const PAGE_NAMES: &[&str] = &[#(#page_names_lits),*];
-            #(#const_html_defs)*
-            #(#const_js_defs)*
+            const CONFIG_PAGE: &str = #page_lit;
         }
 
         impl wifi_caddy::config_storage::ConfigFormGen for #name {
-            fn page_names() -> &'static [&'static str] {
-                Self::PAGE_NAMES
-            }
-
-            fn html_segments_for_group(group: &str) -> Option<&'static [&'static str]> {
-                match group {
-                    #(#html_match_arms)*
-                    #default_arm
-                }
-            }
-
-            fn js_segments_for_group(group: &str) -> Option<&'static [&'static str]> {
-                match group {
-                    #(#js_match_arms)*
-                    #default_arm
-                }
+            fn config_page() -> &'static str {
+                Self::CONFIG_PAGE
             }
         }
     }

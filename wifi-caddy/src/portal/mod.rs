@@ -1,8 +1,4 @@
 //! Embassy + edge-http portal: AP DHCP, optional DNS, HTTP server loop.
-//!
-//! In-tree module when `config` feature is enabled.
-
-extern crate alloc;
 
 #[cfg(feature = "captive")]
 pub(crate) mod captive;
@@ -21,17 +17,22 @@ use edge_nal::TcpBind;
 use edge_nal_embassy::{Tcp, TcpBuffers};
 use embassy_executor::Spawner;
 use embassy_net::Stack;
+use static_cell::StaticCell;
 
 include!(concat!(env!("OUT_DIR"), "/server_tuning.rs"));
 
+/// Milliseconds to wait before retrying TCP bind on port 80 after a failure.
+const TCP_BIND_RETRY_DELAY_MS: u64 = 2000;
+
 /// Run the edge-http server on the given stack with the provided handler.
 ///
-/// Creates TCP buffers, binds to port 80, and runs the server with `HANDLER_TASKS`
-/// concurrent connection handlers. Does not return under normal operation.
+/// Creates TCP buffers, binds to port 80 (retrying with a delay if bind fails),
+/// and runs the server with `HANDLER_TASKS` concurrent connection handlers.
+/// Does not return.
 ///
 /// Connection keepalive is enforced by edge-http's `Server::run`. Per-request
 /// timeouts (if desired) should be handled inside the `Handler` implementation.
-pub async fn serve_loop<H: Handler>(stack: Stack<'static>, handler: H) {
+pub async fn serve_loop<H: Handler>(stack: Stack<'static>, handler: H) -> ! {
     debug!("serve_loop: HANDLER_TASKS = {}", HANDLER_TASKS);
     debug!("serve_loop: TCP_BUF_SIZE = {}", TCP_BUF_SIZE);
     debug!("serve_loop: HTTP_BUF_SIZE = {}", HTTP_BUF_SIZE);
@@ -39,65 +40,102 @@ pub async fn serve_loop<H: Handler>(stack: Stack<'static>, handler: H) {
         "serve_loop: KEEPALIVE_TIMEOUT_MS = {}",
         KEEPALIVE_TIMEOUT_MS
     );
-    let tcp_buffers = TcpBuffers::<{ HANDLER_TASKS }, { TCP_BUF_SIZE }, { TCP_BUF_SIZE }>::new();
-    let tcp = Tcp::new(stack, &tcp_buffers);
+    static TCP_BUF: StaticCell<TcpBuffers<{ HANDLER_TASKS }, { TCP_BUF_SIZE }, { TCP_BUF_SIZE }>> =
+        StaticCell::new();
+    let tcp_buffers = TCP_BUF.uninit().write(TcpBuffers::new());
+    let tcp = Tcp::new(stack, tcp_buffers);
 
-    let acceptor = match tcp
-        .bind(SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::UNSPECIFIED, 80)))
-        .await
-    {
-        Ok(a) => a,
-        Err(_e) => {
-            error!("http: TCP bind error on port 80");
-            return;
+    let acceptor = loop {
+        match tcp
+            .bind(SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::UNSPECIFIED, 80)))
+            .await
+        {
+            Ok(a) => break a,
+            Err(e) => {
+                error!(
+                    "http: TCP bind error on port 80: {}",
+                    crate::fmt::DisplayFmt(&e)
+                );
+                embassy_time::Timer::after(embassy_time::Duration::from_millis(
+                    TCP_BIND_RETRY_DELAY_MS,
+                ))
+                .await;
+            }
         }
     };
 
     let mut server = Server::<{ HANDLER_TASKS }, { HTTP_BUF_SIZE }>::new();
-    if let Err(e) = server
+    match server
         .run(Some(KEEPALIVE_TIMEOUT_MS), acceptor, handler)
         .await
     {
-        error!("http: server error: {}", crate::fmt::DisplayFmt(&e));
+        Ok(()) => error!("http: server exited unexpectedly"),
+        Err(e) => error!("http: server error: {}", crate::fmt::DisplayFmt(&e)),
+    }
+    loop {
+        core::future::pending::<()>().await;
     }
 }
 
 /// Debug server: same as `serve_loop` but single concurrent handler.
 #[cfg(feature = "debug-server")]
-pub async fn serve_loop_debug<H: Handler>(stack: Stack<'static>, handler: H) {
-    let tcp_buffers = TcpBuffers::<1, { TCP_BUF_SIZE }, { TCP_BUF_SIZE }>::new();
-    let tcp = Tcp::new(stack, &tcp_buffers);
+pub async fn serve_loop_debug<H: Handler>(stack: Stack<'static>, handler: H) -> ! {
+    static TCP_BUF_DBG: StaticCell<TcpBuffers<1, { TCP_BUF_SIZE }, { TCP_BUF_SIZE }>> =
+        StaticCell::new();
+    let tcp_buffers = TCP_BUF_DBG.uninit().write(TcpBuffers::new());
+    let tcp = Tcp::new(stack, tcp_buffers);
 
-    let acceptor = match tcp
-        .bind(SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::UNSPECIFIED, 80)))
-        .await
-    {
-        Ok(a) => a,
-        Err(_e) => {
-            error!("http: TCP bind error on port 80 (debug)");
-            return;
+    let acceptor = loop {
+        match tcp
+            .bind(SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::UNSPECIFIED, 80)))
+            .await
+        {
+            Ok(a) => break a,
+            Err(e) => {
+                error!(
+                    "http: TCP bind error on port 80 (debug): {}",
+                    crate::fmt::DisplayFmt(&e)
+                );
+                embassy_time::Timer::after(embassy_time::Duration::from_millis(
+                    TCP_BIND_RETRY_DELAY_MS,
+                ))
+                .await;
+            }
         }
     };
 
     let mut server = Server::<1, { HTTP_BUF_SIZE }>::new();
-    if let Err(_e) = server
+    match server
         .run(Some(KEEPALIVE_TIMEOUT_MS), acceptor, handler)
         .await
     {
-        error!("http: debug server error");
+        Ok(()) => error!("http: debug server exited unexpectedly"),
+        Err(e) => error!("http: debug server error: {}", crate::fmt::DisplayFmt(&e)),
+    }
+    loop {
+        core::future::pending::<()>().await;
     }
 }
 
 /// Spawns DHCP, optional DNS (if feature `captive`), then calls
 /// `spawn_workers(spawner, ap_stack)` so the application can spawn its own HTTP server task.
-pub fn start<F>(spawner: Spawner, ap_stack: Stack<'static>, spawn_workers: F)
+pub fn start<F>(
+    spawner: Spawner,
+    ap_stack: Stack<'static>,
+    spawn_workers: F,
+) -> Result<(), crate::Error>
 where
-    F: FnOnce(Spawner, Stack<'static>),
+    F: FnOnce(Spawner, Stack<'static>) -> Result<(), crate::Error>,
 {
-    spawner.spawn(dhcp::run(ap_stack)).unwrap();
+    spawner
+        .spawn(dhcp::run(ap_stack))
+        .map_err(|_| crate::Error::SpawnDhcp)?;
 
     #[cfg(feature = "captive")]
-    spawner.spawn(dns::run(ap_stack)).unwrap();
+    spawner
+        .spawn(dns::run(ap_stack))
+        .map_err(|_| crate::Error::SpawnDns)?;
 
-    spawn_workers(spawner, ap_stack);
+    spawn_workers(spawner, ap_stack)?;
+    Ok(())
 }

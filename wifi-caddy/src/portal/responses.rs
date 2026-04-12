@@ -1,7 +1,5 @@
 //! HTTP response helpers for edge-http.
 
-use alloc::string::String;
-
 use edge_http::io::Error;
 use edge_http::io::server::Connection;
 use embedded_io_async::{ErrorType, Read, Write};
@@ -46,18 +44,6 @@ where
         conn.write_all(body.as_bytes()).await?;
     }
     conn.complete().await
-}
-
-/// Send a response with plain-text content-type and an owned String body.
-pub async fn send_text_string<T, const N: usize>(
-    conn: &mut Connection<'_, T, N>,
-    status: u16,
-    body: String,
-) -> Result<(), Error<<T as ErrorType>::Error>>
-where
-    T: Read + Write,
-{
-    send_text(conn, status, &body).await
 }
 
 /// Send a 307 redirect response.

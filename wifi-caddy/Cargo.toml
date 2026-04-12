@@ -11,30 +11,18 @@ keywords = ["wifi", "embassy", "embedded", "config", "captive-portal"]
 categories = ["embedded", "no-std"]
 
 [features]
-default = ["portal"]
+default = []
 nightly = []
 defmt = [
     "dep:defmt",
-    "embassy-net?/defmt",
-    "embassy-time?/defmt",
-    "edge-http?/defmt",
-    "edge-nal-embassy?/defmt",
+    "embassy-net/defmt",
+    "embassy-time/defmt",
+    "edge-http/defmt",
+    "edge-nal-embassy/defmt",
 ]
-log = ["dep:log", "edge-http?/log"]
-portal = [
-    "dep:edge-http",
-    "dep:edge-nal",
-    "dep:edge-nal-embassy",
-    "dep:edge-dhcp",
-    "dep:embassy-executor",
-    "dep:embassy-net",
-    "dep:embassy-time",
-    "dep:embedded-io-async",
-    "dep:serde",
-    "dep:serde-json-core",
-]
-captive = ["portal", "dep:edge-captive"]
-debug-server = ["portal"]
+log = ["dep:log", "edge-http/log"]
+captive = ["dep:edge-captive"]
+debug-server = []
 
 [dependencies]
 embassy-sync = { version = "0.7.2" }
@@ -43,31 +31,26 @@ enumset = "1.1.10"
 defmt = { version = "1.0.1", optional = true }
 log = { version = "0.4", optional = true }
 
-# portal feature
-edge-http = { version = "0.7.0", optional = true }
-edge-nal = { version = "0.6.0", optional = true }
-edge-nal-embassy = { version = "0.8.1", optional = true, default-features = false, features = [
+edge-http = { version = "0.7.0" }
+edge-nal = { version = "0.6.0" }
+edge-nal-embassy = { version = "0.8.1", default-features = false, features = [
     "dns",
     "proto-ipv4",
     "tcp",
     "udp",
 ] }
-edge-dhcp = { version = "0.7.0", optional = true }
-embassy-executor = { version = "0.9.1", optional = true }
-embassy-net = { version = "0.8.0", optional = true, features = [
+edge-dhcp = { version = "0.7.0" }
+embassy-executor = { version = "0.9.1" }
+embassy-net = { version = "0.8.0", features = [
     "dhcpv4",
     "medium-ethernet",
     "tcp",
     "udp",
     "dns",
 ] }
-embassy-time = { version = "0.5.0", optional = true }
-embedded-io-async = { version = "0.7", optional = true }
-serde = { version = "1.0", optional = true, default-features = false, features = [
-    "derive",
-    "alloc",
-] }
-serde-json-core = { version = "0.6", optional = true }
+embassy-time = { version = "0.5.0" }
+embedded-io-async = { version = "0.7" }
+static_cell = { version = "2.1.1", default-features = false }
 
 # captive feature (DNS redirect)
 edge-captive = { version = "0.7.0", optional = true }

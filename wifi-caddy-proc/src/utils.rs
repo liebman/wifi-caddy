@@ -13,15 +13,29 @@ pub const MAGIC_KEY: &str = "__magic__";
 /// Reserved key for format version
 pub const FORMAT_VERSION_KEY: &str = "__format_version__";
 
-/// Compute FNV-1a 64-bit hash
-pub fn fnv1a_hash(s: &str) -> u64 {
+/// Compute FNV-1a 64-bit hash.
+///
+/// Implemented with an explicit byte loop so it matches
+/// `esp-wifi-caddy/src/storage.rs` and can be used in `const` assertions.
+pub const fn fnv1a_hash(s: &str) -> u64 {
+    let bytes = s.as_bytes();
     let mut hash = FNV_OFFSET;
-    for b in s.bytes() {
-        hash ^= b as u64;
+    let mut i = 0;
+    while i < bytes.len() {
+        hash ^= bytes[i] as u64;
         hash = hash.wrapping_mul(FNV_PRIME);
+        i += 1;
     }
     hash
 }
+
+// Golden values: must match `esp-wifi-caddy/src/storage.rs` (`fnv1a_hash` on the same UTF-8 bytes).
+const _: () = {
+    assert!(fnv1a_hash(MAGIC_KEY) == 0xcd3d2b3b18ccd31c);
+    assert!(fnv1a_hash(FORMAT_VERSION_KEY) == 0x63db463dc1cefc01);
+    assert!(fnv1a_hash("wifi_ssid") == 0xa81997565294b4fe);
+    assert!(fnv1a_hash("wifi_pass") == 0xe7235c50be9a4fe8);
+};
 
 /// Capitalize each word and join with the given separator.
 ///
@@ -83,6 +97,7 @@ pub fn escape_html(s: &str) -> String {
             '<' => out.push_str("&lt;"),
             '>' => out.push_str("&gt;"),
             '"' => out.push_str("&quot;"),
+            '\'' => out.push_str("&#39;"),
             _ => out.push(c),
         }
     }
@@ -102,37 +117,6 @@ pub fn escape_js_str(s: &str) -> String {
         }
     }
     out
-}
-
-/// Convert page name to a valid Rust const suffix (e.g. "basic" -> "BASIC", "Home Assistant" -> "HOME_ASSISTANT").
-///
-/// Replaces any character that is not alphanumeric or `_` with `_`, then collapses
-/// consecutive underscores into one.
-pub fn page_name_to_suffix(page: &str) -> String {
-    let raw: String = page
-        .chars()
-        .map(|c| {
-            if c.is_ascii_alphanumeric() || c == '_' {
-                c.to_ascii_uppercase()
-            } else {
-                '_'
-            }
-        })
-        .collect();
-    let mut result = String::with_capacity(raw.len());
-    let mut prev_underscore = false;
-    for c in raw.chars() {
-        if c == '_' {
-            if !prev_underscore {
-                result.push('_');
-            }
-            prev_underscore = true;
-        } else {
-            result.push(c);
-            prev_underscore = false;
-        }
-    }
-    result
 }
 
 /// Convert page name to a valid JS identifier suffix (e.g. "Network" -> "Network", "my-page" -> "my_page").
@@ -205,15 +189,6 @@ mod tests {
     }
 
     #[test]
-    fn test_page_name_to_suffix() {
-        assert_eq!(page_name_to_suffix("basic"), "BASIC");
-        assert_eq!(page_name_to_suffix("my-page"), "MY_PAGE");
-        assert_eq!(page_name_to_suffix("Home Assistant"), "HOME_ASSISTANT");
-        assert_eq!(page_name_to_suffix("a--b"), "A_B");
-        assert_eq!(page_name_to_suffix("PrusaLink"), "PRUSALINK");
-    }
-
-    #[test]
     fn test_page_name_to_js_id() {
         assert_eq!(page_name_to_js_id("Network"), "Network");
         assert_eq!(page_name_to_js_id("my-page"), "my_page");
@@ -226,5 +201,16 @@ mod tests {
         let h = fnv1a_hash("wifi_ssid");
         assert_eq!(h, fnv1a_hash("wifi_ssid"));
         assert_ne!(h, fnv1a_hash("wifi_pass"));
+    }
+
+    #[test]
+    fn test_fnv1a_hash_reserved_keys() {
+        let magic = fnv1a_hash(MAGIC_KEY);
+        let version = fnv1a_hash(FORMAT_VERSION_KEY);
+        assert_ne!(magic, 0);
+        assert_ne!(version, 0);
+        assert_ne!(magic, version);
+        assert_eq!(magic, fnv1a_hash("__magic__"));
+        assert_eq!(version, fnv1a_hash("__format_version__"));
     }
 }

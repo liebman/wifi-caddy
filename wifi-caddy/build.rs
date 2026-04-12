@@ -3,11 +3,34 @@ fn env_or(key: &str, default: &str) -> String {
     std::env::var(key).unwrap_or_else(|_| default.to_string())
 }
 
+fn validate_usize(key: &str, value: &str) {
+    if value.parse::<usize>().is_err() {
+        panic!(
+            "wifi-caddy build.rs: {key}={value:?} is not a valid usize. \
+             Set it to a positive integer or remove it to use the default."
+        );
+    }
+}
+
+fn validate_u32(key: &str, value: &str) {
+    if value.parse::<u32>().is_err() {
+        panic!(
+            "wifi-caddy build.rs: {key}={value:?} is not a valid u32. \
+             Set it to a positive integer or remove it to use the default."
+        );
+    }
+}
+
 fn main() {
     let handler_tasks = env_or("WIFI_CADDY_HANDLER_TASKS", "4");
     let tcp_buf_size = env_or("WIFI_CADDY_TCP_BUF_SIZE", "2048");
     let http_buf_size = env_or("WIFI_CADDY_HTTP_BUF_SIZE", "4096");
     let keepalive_ms = env_or("WIFI_CADDY_KEEPALIVE_TIMEOUT_MS", "3000");
+
+    validate_usize("WIFI_CADDY_HANDLER_TASKS", &handler_tasks);
+    validate_usize("WIFI_CADDY_TCP_BUF_SIZE", &tcp_buf_size);
+    validate_usize("WIFI_CADDY_HTTP_BUF_SIZE", &http_buf_size);
+    validate_u32("WIFI_CADDY_KEEPALIVE_TIMEOUT_MS", &keepalive_ms);
 
     let out = std::path::Path::new(&std::env::var("OUT_DIR").unwrap()).join("server_tuning.rs");
 

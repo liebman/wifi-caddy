@@ -1,5 +1,6 @@
-//! Group API and notify codegen for `WifiCaddyConfig`: JSON get/set, optional channel, config statics.
+//! Group API and notify codegen for `WifiCaddyConfig`: JSON get/set, `ConfigServer` + update channel, statics.
 
+use crate::field_attrs::{ParsedFormAttrs, parse_config_form_attr_into};
 use crate::utils::{consume_meta_value, to_pascal_case, try_parse_lit_int, try_parse_lit_str};
 use proc_macro2::TokenStream;
 use quote::{format_ident, quote};
@@ -22,26 +23,12 @@ struct ApiField {
 
 /// All values parsed from struct-level attributes on the annotated config struct.
 struct StructAttrs {
-    /// Whether `#[config_server(...)]` was present at all (needed to emit the esp block).
-    config_server_present: bool,
     /// `storage_magic = 0x...` from `#[config_server]`.
     storage_magic: Option<u32>,
     /// `storage_version = N` from `#[config_server]`.
     storage_version: Option<u32>,
-    /// Whether `#[config_notify]` was present.
-    notify_channel: bool,
     /// `cap = N` from `#[config_notify]`.
     notify_cap: Option<usize>,
-    /// UI string overrides from `#[config_ui(...)]`.
-    ui_page_heading: Option<String>,
-    ui_title: Option<String>,
-    ui_subtitle: Option<String>,
-    ui_nav_left: Option<String>,
-    ui_nav_right: Option<String>,
-    /// `extra_css = "..."` from `#[config_ui]`; custom CSS appended after built-in stylesheet.
-    ui_extra_css: Option<String>,
-    /// `default_group = "..."` from `#[config_ui]`; which tab to show first.
-    ui_default_group: Option<String>,
 }
 
 // ---------------------------------------------------------------------------
@@ -49,22 +36,12 @@ struct StructAttrs {
 // ---------------------------------------------------------------------------
 
 fn parse_struct_attrs(attrs: &[syn::Attribute]) -> StructAttrs {
-    let mut config_server_present = false;
     let mut storage_magic: Option<u32> = None;
     let mut storage_version: Option<u32> = None;
-    let mut notify_channel = false;
     let mut notify_cap: Option<usize> = None;
-    let mut ui_page_heading: Option<String> = None;
-    let mut ui_title: Option<String> = None;
-    let mut ui_subtitle: Option<String> = None;
-    let mut ui_nav_left: Option<String> = None;
-    let mut ui_nav_right: Option<String> = None;
-    let mut ui_extra_css: Option<String> = None;
-    let mut ui_default_group: Option<String> = None;
 
     for attr in attrs {
         if attr.path().is_ident("config_server") {
-            config_server_present = true;
             let _ = attr.parse_nested_meta(|meta| {
                 if meta.path.is_ident("storage_magic") {
                     storage_magic = try_parse_lit_int(&meta);
@@ -76,7 +53,6 @@ fn parse_struct_attrs(attrs: &[syn::Attribute]) -> StructAttrs {
                 Ok(())
             });
         } else if attr.path().is_ident("config_notify") {
-            notify_channel = true;
             if let syn::Meta::List(_) = &attr.meta {
                 let _ = attr.parse_nested_meta(|meta| {
                     if meta.path.is_ident("cap") {
@@ -87,43 +63,13 @@ fn parse_struct_attrs(attrs: &[syn::Attribute]) -> StructAttrs {
                     Ok(())
                 });
             }
-        } else if attr.path().is_ident("config_ui") {
-            let _ = attr.parse_nested_meta(|meta| {
-                if meta.path.is_ident("page_heading") {
-                    ui_page_heading = try_parse_lit_str(&meta);
-                } else if meta.path.is_ident("title") {
-                    ui_title = try_parse_lit_str(&meta);
-                } else if meta.path.is_ident("subtitle") {
-                    ui_subtitle = try_parse_lit_str(&meta);
-                } else if meta.path.is_ident("nav_left") {
-                    ui_nav_left = try_parse_lit_str(&meta);
-                } else if meta.path.is_ident("nav_right") {
-                    ui_nav_right = try_parse_lit_str(&meta);
-                } else if meta.path.is_ident("extra_css") {
-                    ui_extra_css = try_parse_lit_str(&meta);
-                } else if meta.path.is_ident("default_group") {
-                    ui_default_group = try_parse_lit_str(&meta);
-                } else {
-                    consume_meta_value(&meta);
-                }
-                Ok(())
-            });
         }
     }
 
     StructAttrs {
-        config_server_present,
         storage_magic,
         storage_version,
-        notify_channel,
         notify_cap,
-        ui_page_heading,
-        ui_title,
-        ui_subtitle,
-        ui_nav_left,
-        ui_nav_right,
-        ui_extra_css,
-        ui_default_group,
     }
 }
 
@@ -138,32 +84,14 @@ fn collect_api_fields(fields: &syn::Fields) -> Vec<ApiField> {
         let field_ident = field.ident.as_ref().expect("unnamed fields not supported");
 
         let mut has_config_form = false;
-        let mut skip = false;
-        let mut page = String::from("main");
-        let mut input_type = String::from("text");
+        let mut form = ParsedFormAttrs::default();
         let mut notify: Option<String> = None;
 
-        // from config_form: input_type (password → redact in GET), skip
+        // from config_form: input_type (password → redact in GET), skip, page
         for attr in &field.attrs {
             if attr.path().is_ident("config_form") {
                 has_config_form = true;
-                let _ = attr.parse_nested_meta(|meta| {
-                    if meta.path.is_ident("skip") {
-                        skip = true;
-                    } else if meta.path.is_ident("page") {
-                        if let Some(v) = try_parse_lit_str(&meta) {
-                            page = v;
-                        }
-                    } else if meta.path.is_ident("input_type") {
-                        if let Some(v) = try_parse_lit_str(&meta) {
-                            input_type = v;
-                        }
-                    } else {
-                        // Unrecognized (e.g. fieldset, help): consume so stream advances
-                        consume_meta_value(&meta);
-                    }
-                    Ok(())
-                });
+                let _ = parse_config_form_attr_into(attr, &mut form);
             }
         }
 
@@ -175,11 +103,11 @@ fn collect_api_fields(fields: &syn::Fields) -> Vec<ApiField> {
                         notify = try_parse_lit_str(&meta);
                     } else if meta.path.is_ident("notify_group") {
                         // Backward compat: convert to PascalCase variant name
-                        if let Ok(expr) = meta.value().and_then(|v| v.parse::<syn::Expr>()) {
-                            if let syn::Expr::Lit(expr_lit) = expr {
-                                if let syn::Lit::Str(s) = expr_lit.lit {
-                                    notify = Some(to_pascal_case(&s.value()));
-                                }
+                        if let Ok(syn::Expr::Lit(expr_lit)) =
+                            meta.value().and_then(|v| v.parse::<syn::Expr>())
+                        {
+                            if let syn::Lit::Str(s) = expr_lit.lit {
+                                notify = Some(to_pascal_case(&s.value()));
                             }
                         }
                     } else {
@@ -190,14 +118,16 @@ fn collect_api_fields(fields: &syn::Fields) -> Vec<ApiField> {
             }
         }
 
-        if !has_config_form || skip {
+        if !has_config_form || form.skip {
             continue;
         }
+
+        let input_type = form.input_type.unwrap_or_else(|| String::from("text"));
 
         api_fields.push(ApiField {
             ident: field_ident.clone(),
             ty: field.ty.clone(),
-            page,
+            page: form.page,
             is_password: input_type == "password",
             notify,
         });
@@ -211,41 +141,33 @@ fn collect_api_fields(fields: &syn::Fields) -> Vec<ApiField> {
 // ---------------------------------------------------------------------------
 
 /// Collect distinct notify variant names and emit the ConfigChange enum.
-/// Uses __None placeholder when no fields have a notify variant (EnumSet needs at least one variant).
-fn gen_config_change_enum(
-    pages: &std::collections::BTreeMap<String, Vec<ApiField>>,
-) -> TokenStream {
+/// Fields without an explicit `notify = "..."` are assigned the catchall `Changed` variant.
+fn gen_config_change_enum(pages: &[(String, Vec<ApiField>)]) -> TokenStream {
     let mut variant_names: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
-    for fields in pages.values() {
+    let mut has_untagged = false;
+    for (_, fields) in pages {
         for f in fields {
             if let Some(ref v) = f.notify {
                 variant_names.insert(v.clone());
+            } else {
+                has_untagged = true;
             }
         }
+    }
+    if has_untagged {
+        variant_names.insert("Changed".to_string());
     }
     let variant_idents: Vec<syn::Ident> = variant_names
         .iter()
         .map(|s| syn::Ident::new(s, proc_macro2::Span::call_site()))
         .collect();
 
-    // EnumSetType provides Clone, Copy, PartialEq, Eq; repr = "u64" for bitflags-style sets
-    if variant_idents.is_empty() {
-        quote! {
-            #[derive(enumset::EnumSetType)]
-            #[enumset(repr = "u64")]
-            pub enum ConfigChange {
-                #[doc(hidden)]
-                __None,
-            }
-        }
-    } else {
-        let variants = variant_idents.iter().map(|v| quote! { #v });
-        quote! {
-            #[derive(enumset::EnumSetType)]
-            #[enumset(repr = "u64")]
-            pub enum ConfigChange {
-                #(#variants),*
-            }
+    let variants = variant_idents.iter().map(|v| quote! { #v });
+    quote! {
+        #[derive(enumset::EnumSetType)]
+        #[enumset(repr = "u64")]
+        pub enum ConfigChange {
+            #(#variants),*
         }
     }
 }
@@ -257,14 +179,16 @@ fn gen_config_change_enum(
 /// Returns (dto_structs, get_group_json arms, set_group_json arms).
 fn gen_dto_and_group_arms(
     name: &syn::Ident,
-    pages: &std::collections::BTreeMap<String, Vec<ApiField>>,
+    pages: &[(String, Vec<ApiField>)],
 ) -> (Vec<TokenStream>, Vec<TokenStream>, Vec<TokenStream>) {
     let mut dto_structs = Vec::new();
     let mut get_arms = Vec::new();
     let mut set_arms = Vec::new();
 
     for (page_name, fields) in pages {
-        let dto_name = format_ident!("{}Config", to_pascal_case(page_name));
+        let page_pascal = to_pascal_case(page_name);
+        let page_ident = syn::Ident::new(&page_pascal, proc_macro2::Span::call_site());
+        let dto_name = format_ident!("{}{}PageDto", name, page_ident);
         let page_lit = syn::LitStr::new(page_name, proc_macro2::Span::call_site());
 
         // DTO struct: one public field per config field, serialisable to/from JSON
@@ -273,7 +197,10 @@ fn gen_dto_and_group_arms(
             let t = &f.ty;
             quote! { pub #i: #t }
         });
-        let dto_doc = format!("DTO for config page \"{}\".", page_name);
+        let dto_doc = format!(
+            "Generated DTO for config page \"{}\" of `{}`.",
+            page_name, name
+        );
         dto_structs.push(quote! {
             #[doc = #dto_doc]
             #[derive(serde::Serialize, serde::Deserialize)]
@@ -307,14 +234,9 @@ fn gen_dto_and_group_arms(
                 let i = &f.ident;
                 let setter = format_ident!("set_{}", i);
                 let field_ty = &f.ty;
-                let insert_line: TokenStream = f
-                    .notify
-                    .as_ref()
-                    .map(|v| {
-                        let variant_ident = syn::Ident::new(v, proc_macro2::Span::call_site());
-                        quote! { changed.insert(ConfigChange::#variant_ident); }
-                    })
-                    .unwrap_or_else(|| quote! {});
+                let variant_name = f.notify.as_deref().unwrap_or("Changed");
+                let variant_ident = syn::Ident::new(variant_name, proc_macro2::Span::call_site());
+                let insert_line = quote! { changed.insert(ConfigChange::#variant_ident); };
 
                 if f.is_password {
                     // Skip applying if the form sent an empty password (keep existing value)
@@ -337,7 +259,6 @@ fn gen_dto_and_group_arms(
             })
             .collect();
 
-        let _ = name; // suppress unused warning; name is used in the ConfigApi impl below
         set_arms.push(quote! {
             #page_lit => {
                 let (dto, _) = serde_json_core::from_str::<#dto_name>(json)
@@ -356,12 +277,10 @@ fn gen_dto_and_group_arms(
 // Phase 5 – set_field arms (single key=value from HTTP query string)
 // ---------------------------------------------------------------------------
 
-fn gen_set_field_arms(
-    pages: &std::collections::BTreeMap<String, Vec<ApiField>>,
-) -> Vec<TokenStream> {
+fn gen_set_field_arms(pages: &[(String, Vec<ApiField>)]) -> Vec<TokenStream> {
     pages
-        .values()
-        .flat_map(|fields| fields.iter())
+        .iter()
+        .flat_map(|(_, fields)| fields.iter())
         .map(|f| {
             let key_str = f.ident.to_string();
             let key_lit = syn::LitStr::new(&key_str, proc_macro2::Span::call_site());
@@ -369,36 +288,21 @@ fn gen_set_field_arms(
             let setter = format_ident!("set_{}", i);
             let field_ty = &f.ty;
 
-            // Build the compare-and-apply body, optionally inserting a ConfigChange variant
-            let variant_ts = f.notify.as_ref().map(|v| {
-                let vid = syn::Ident::new(v, proc_macro2::Span::call_site());
-                quote! { ConfigChange::#vid }
-            });
-            let parse_and_apply = match &variant_ts {
-                Some(v) => quote! {
-                    if let Ok(parsed) = value.parse::<#field_ty>() {
-                        if self.#i != parsed {
-                            self.#setter(parsed);
-                            let mut changed = enumset::EnumSet::<ConfigChange>::new();
-                            changed.insert(#v);
-                            Ok(Some(changed))
-                        } else {
-                            Ok(Some(enumset::EnumSet::new()))
-                        }
+            let variant_name = f.notify.as_deref().unwrap_or("Changed");
+            let vid = syn::Ident::new(variant_name, proc_macro2::Span::call_site());
+            let parse_and_apply = quote! {
+                if let Ok(parsed) = value.parse::<#field_ty>() {
+                    if self.#i != parsed {
+                        self.#setter(parsed);
+                        let mut changed = enumset::EnumSet::<ConfigChange>::new();
+                        changed.insert(ConfigChange::#vid);
+                        Ok(Some(changed))
                     } else {
-                        Err(wifi_caddy::config_storage::ConfigError::InvalidData)
-                    }
-                },
-                None => quote! {
-                    if let Ok(parsed) = value.parse::<#field_ty>() {
-                        if self.#i != parsed {
-                            self.#setter(parsed);
-                        }
                         Ok(Some(enumset::EnumSet::new()))
-                    } else {
-                        Err(wifi_caddy::config_storage::ConfigError::InvalidData)
                     }
-                },
+                } else {
+                    Err(wifi_caddy::config_storage::ConfigError::InvalidData)
+                }
             };
 
             if f.is_password {
@@ -426,10 +330,6 @@ fn gen_set_field_arms(
 // ---------------------------------------------------------------------------
 
 fn gen_notify_channel(attrs: &StructAttrs, num_pages: usize) -> TokenStream {
-    if !attrs.notify_channel {
-        return quote! {};
-    }
-
     let cap_val = attrs.notify_cap.unwrap_or(num_pages);
     let cap_lit = proc_macro2::Literal::usize_unsuffixed(cap_val);
 
@@ -442,69 +342,42 @@ fn gen_notify_channel(attrs: &StructAttrs, num_pages: usize) -> TokenStream {
         pub type ConfigUpdateReceiver = &'static ConfigUpdateChannel;
         static CONFIG_UPDATE_CHANNEL: static_cell::StaticCell<ConfigUpdateChannel> =
             static_cell::StaticCell::new();
-        static mut CONFIG_UPDATE_CHANNEL_REF: Option<&'static ConfigUpdateChannel> = None;
-
-        fn config_update_notify(changed: enumset::EnumSet<ConfigChange>) {
-            if let Some(ch) = unsafe { CONFIG_UPDATE_CHANNEL_REF } {
-                let _ = ch.try_send(changed);
-            }
-        }
     }
 }
 
 // ---------------------------------------------------------------------------
-// Phase 7 – storage_params / ui_options as associated fns (always emitted)
+// Phase 7 – ConfigServer trait impl (always emitted; #[config_server] only sets storage defaults)
 // ---------------------------------------------------------------------------
 
-fn gen_config_statics(attrs: &StructAttrs) -> TokenStream {
-    if !attrs.config_server_present {
-        return quote! {};
-    }
-
+fn gen_config_server_impl(
+    name: &syn::Ident,
+    attrs: &StructAttrs,
+    init_notify_body: &TokenStream,
+) -> TokenStream {
     let storage_magic_val = attrs.storage_magic.unwrap_or(0x4255_aa42);
     let storage_version_val = attrs.storage_version.unwrap_or(1);
     let storage_magic_lit = proc_macro2::Literal::u32_unsuffixed(storage_magic_val);
     let storage_version_lit = proc_macro2::Literal::u32_unsuffixed(storage_version_val);
 
-    let ui_default_group_val = attrs.ui_default_group.as_deref().unwrap_or("main");
-    let ui_page_heading_val = attrs.ui_page_heading.as_deref().unwrap_or("Configuration");
-    let ui_title_val = attrs.ui_title.as_deref().unwrap_or("Configuration");
-    let ui_subtitle_val = attrs.ui_subtitle.as_deref().unwrap_or("");
-    let ui_nav_left_val = attrs
-        .ui_nav_left
-        .as_deref()
-        .unwrap_or("<span>Configuration</span>");
-    let ui_nav_right_val = attrs.ui_nav_right.as_deref().unwrap_or("<span></span>");
-    let ui_extra_css_val = attrs.ui_extra_css.as_deref().unwrap_or("");
-
-    let ui_default_group_lit =
-        syn::LitStr::new(ui_default_group_val, proc_macro2::Span::call_site());
-    let ui_page_heading_lit = syn::LitStr::new(ui_page_heading_val, proc_macro2::Span::call_site());
-    let ui_title_lit = syn::LitStr::new(ui_title_val, proc_macro2::Span::call_site());
-    let ui_subtitle_lit = syn::LitStr::new(ui_subtitle_val, proc_macro2::Span::call_site());
-    let ui_nav_left_lit = syn::LitStr::new(ui_nav_left_val, proc_macro2::Span::call_site());
-    let ui_nav_right_lit = syn::LitStr::new(ui_nav_right_val, proc_macro2::Span::call_site());
-    let ui_extra_css_lit = syn::LitStr::new(ui_extra_css_val, proc_macro2::Span::call_site());
-
     quote! {
-        #[doc(hidden)]
-        pub fn __storage_params() -> wifi_caddy::ConfigStorageParams {
-            wifi_caddy::ConfigStorageParams {
-                magic: #storage_magic_lit,
-                format_version: #storage_version_lit,
-            }
-        }
+        impl wifi_caddy::config_storage::ConfigServer for #name {
+            type UpdateReceiver = ConfigUpdateReceiver;
 
-        #[doc(hidden)]
-        pub fn __ui_options() -> wifi_caddy::ConfigUiOptions {
-            wifi_caddy::ConfigUiOptions {
-                default_group: #ui_default_group_lit,
-                page_heading: #ui_page_heading_lit,
-                title: #ui_title_lit,
-                subtitle: #ui_subtitle_lit,
-                nav_left: #ui_nav_left_lit,
-                nav_right: #ui_nav_right_lit,
-                extra_css: #ui_extra_css_lit,
+            fn storage_params() -> wifi_caddy::ConfigStorageParams {
+                wifi_caddy::ConfigStorageParams {
+                    magic: #storage_magic_lit,
+                    format_version: #storage_version_lit,
+                }
+            }
+
+            fn init_notify() -> (
+                Self::UpdateReceiver,
+                embassy_sync::channel::DynamicSender<
+                    'static,
+                    <Self as wifi_caddy::config_storage::ConfigApi>::ChangedSet,
+                >,
+            ) {
+                #init_notify_body
             }
         }
     }
@@ -514,24 +387,20 @@ fn gen_config_statics(attrs: &StructAttrs) -> TokenStream {
 // Entry point
 // ---------------------------------------------------------------------------
 
-/// Builds the group API, optional notify channel, and config statics for `WifiCaddyConfig`.
+/// Builds the group API, notify channel machinery, and `ConfigServer` impl for `WifiCaddyConfig`.
 ///
-/// Struct-level attributes: `#[config_server(storage_magic, storage_version)]`,
-/// `#[config_notify(cap)]`, `#[config_ui(page_heading, title, subtitle, nav_left, nav_right)]`.
+/// Struct-level overrides (optional on the struct): `#[config_server(storage_magic, storage_version)]`
+/// for flash params (defaults apply if omitted), and `#[config_notify(cap = N)]` for channel capacity
+/// (default: number of config pages). Omitting these attributes does not disable codegen.
 /// Field-level: from `#[config_form]` we use `skip` and `input_type` (password → redacted in GET);
 /// from `#[config_store]`, `notify = "Wifi"` or `notify_group = "wifi"` add a `ConfigChange` variant.
 ///
-/// Emits: per-page DTOs (e.g. `MainConfig`) for JSON, `ConfigChange` enum, `ConfigApi` impl;
-/// if `#[config_notify]`, the channel types, `config_update_notify` (private), and
-/// `MyConfig::__init_config_update_channel()` (returns `ConfigUpdateReceiver`);
-/// if `#[config_server]`, `MyConfig::__storage_params()` and `MyConfig::__ui_options()`
-/// (referencing `wifi_caddy::*`).
-///
-/// Always emits `MyConfig::__init_config_update_channel()` (returns `()` when notify is off).
+/// Emits: per-page DTOs (e.g. `AppConfigMainPageDto` for struct `AppConfig` and page `main`) for JSON, `ConfigChange` enum, `ConfigApi` impl;
+/// channel types; `impl ConfigServer` with storage params and `init_notify`. Opt-out is not supported.
 ///
 /// All generated code references only `wifi_caddy::*` — no platform-specific types.
-/// Platform crates (e.g. `esp-wifi-caddy`) provide `wifi_init!` macros that call the
-/// `#[doc(hidden)]` associated functions.
+/// Platform crates (e.g. `esp-wifi-caddy`) use the `ConfigServer` trait to access
+/// storage params and the notify channel via `init_notify`.
 pub fn derive_config_api_impl(input: &DeriveInput) -> TokenStream {
     let name = &input.ident;
 
@@ -543,37 +412,29 @@ pub fn derive_config_api_impl(input: &DeriveInput) -> TokenStream {
     let attrs = parse_struct_attrs(&input.attrs);
     let api_fields = collect_api_fields(&data.fields);
 
-    // Group fields by page name (single-page: all "main")
-    let mut pages: std::collections::BTreeMap<String, Vec<ApiField>> =
-        std::collections::BTreeMap::new();
+    // Group fields by page name, preserving declaration order
+    let mut pages: Vec<(String, Vec<ApiField>)> = Vec::new();
     for f in api_fields {
-        pages.entry(f.page.clone()).or_default().push(f);
+        let page_name = f.page.clone();
+        if let Some(entry) = pages.iter_mut().find(|(name, _)| *name == page_name) {
+            entry.1.push(f);
+        } else {
+            pages.push((page_name, vec![f]));
+        }
     }
 
     let config_change_enum = gen_config_change_enum(&pages);
     let (dto_structs, get_arms, set_arms) = gen_dto_and_group_arms(name, &pages);
     let set_field_arms = gen_set_field_arms(&pages);
     let notify_channel_block = gen_notify_channel(&attrs, pages.len());
-    let config_statics_block = gen_config_statics(&attrs);
 
-    let on_updated_body = if attrs.notify_channel {
-        quote! { Some(&config_update_notify) }
-    } else {
-        quote! { None }
+    let init_notify_body = quote! {
+        let ch = CONFIG_UPDATE_CHANNEL.init(ConfigUpdateChannel::new());
+        let sender = embassy_sync::channel::DynamicSender::from(ch.sender());
+        (ch, sender)
     };
 
-    let (init_channel_ret_type, init_channel_body) = if attrs.notify_channel {
-        (
-            quote! { ConfigUpdateReceiver },
-            quote! {
-                let channel_ref = CONFIG_UPDATE_CHANNEL.init(ConfigUpdateChannel::new());
-                unsafe { CONFIG_UPDATE_CHANNEL_REF = Some(channel_ref) };
-                channel_ref
-            },
-        )
-    } else {
-        (quote! { () }, quote! { () })
-    };
+    let config_server_impl = gen_config_server_impl(name, &attrs, &init_notify_body);
 
     let default_err = quote! { _ => Err(wifi_caddy::config_storage::ConfigError::InvalidData) };
 
@@ -610,20 +471,6 @@ pub fn derive_config_api_impl(input: &DeriveInput) -> TokenStream {
 
         #notify_channel_block
 
-        impl #name {
-            #[doc(hidden)]
-            pub fn __config_on_updated() -> Option<&'static (dyn Fn(
-                <Self as wifi_caddy::config_storage::ConfigApi>::ChangedSet,
-            ) + Send)> {
-                #on_updated_body
-            }
-
-            #[doc(hidden)]
-            pub fn __init_config_update_channel() -> #init_channel_ret_type {
-                #init_channel_body
-            }
-
-            #config_statics_block
-        }
+        #config_server_impl
     }
 }

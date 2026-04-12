@@ -10,15 +10,15 @@ mod fmt;
 
 pub mod config_storage;
 
-#[cfg(feature = "portal")]
 pub mod portal;
-#[cfg(feature = "portal")]
 mod run_http;
 
-#[cfg(all(feature = "portal", feature = "debug-server"))]
+pub use run_http::run_http_config_loop;
+#[cfg(feature = "debug-server")]
 pub use run_http::run_http_debug_loop;
-#[cfg(feature = "portal")]
-pub use run_http::{ConfigUiOptions, run_http_config_loop};
+
+#[doc(hidden)]
+pub use config_storage::{ConfigServer, ConfigType};
 
 /// Parameters for config storage mount/format. Only the values are configurable;
 /// key IDs are fixed to match wifi-caddy-proc.
@@ -31,34 +31,30 @@ pub struct ConfigStorageParams {
     pub format_version: u32,
 }
 
-/// Handle returned by the platform-specific init macro (e.g. `esp_wifi_caddy::wifi_init!`).
-/// Use [`.config()`](ConfigHandle::config) to get the shared config mutex to pass into
-/// application tasks.
-pub struct ConfigHandle<C: 'static> {
-    config: &'static embassy_sync::mutex::Mutex<
-        embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex,
-        C,
-    >,
+/// Shared config mutex returned by the platform-specific init macro
+/// (e.g. `esp_wifi_caddy::wifi_init!`). Pass directly to application tasks.
+pub type ConfigHandle<C> = &'static embassy_sync::mutex::Mutex<
+    embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex,
+    C,
+>;
+
+/// Unified error type for wifi-caddy initialization and portal startup.
+#[derive(Debug)]
+pub enum Error {
+    /// Flash mount, config load, serialization, or partition lookup failed.
+    Config(config_storage::ConfigError),
+    /// Failed to spawn the DHCP server task.
+    SpawnDhcp,
+    /// Failed to spawn the DNS server task.
+    SpawnDns,
+    /// WiFi radio or controller initialization failed.
+    WifiInit,
+    /// Failed to spawn an HTTP config worker task.
+    SpawnHttpWorker,
 }
 
-impl<C: 'static> ConfigHandle<C> {
-    /// Create a new `ConfigHandle` wrapping the given config mutex.
-    pub fn new(
-        config: &'static embassy_sync::mutex::Mutex<
-            embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex,
-            C,
-        >,
-    ) -> Self {
-        Self { config }
-    }
-
-    /// Returns the shared config mutex (`'static`), for use in tasks or elsewhere.
-    pub fn config(
-        &self,
-    ) -> &'static embassy_sync::mutex::Mutex<
-        embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex,
-        C,
-    > {
-        self.config
+impl From<config_storage::ConfigError> for Error {
+    fn from(e: config_storage::ConfigError) -> Self {
+        Error::Config(e)
     }
 }

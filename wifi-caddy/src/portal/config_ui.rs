@@ -1,26 +1,23 @@
 //! Generic config UI handler: "/" (config page), "/config-group/:group", "/config/:field".
 //!
 //! Implements `edge_http::io::server::Handler` to route requests manually.
-//! Use with a config type that implements `ConfigFormGen`, `ConfigApi`, and `ConfigLoadStore`;
+//! Use with a config type that implements `ConfigType`;
 //! storage is passed as a second mutex and must implement `ConfigStorage`.
-
-extern crate alloc;
 
 use core::fmt::{Debug, Display};
 
-use crate::config_storage::{
-    ConfigApi, ConfigChangedSet, ConfigFormGen, ConfigGet, ConfigLoadStore, ConfigStorage,
-};
+use crate::config_storage::{ConfigChangedSet, ConfigStorage, ConfigType};
 use edge_http::io::Error;
 use edge_http::io::server::Connection;
 use edge_nal::TcpSplit;
 use embassy_sync::blocking_mutex::raw::RawMutex;
+use embassy_sync::channel::DynamicSender;
 use embassy_sync::mutex::Mutex;
 use embedded_io_async::{ErrorType, Read, Write};
 
 use super::config_group::{ConfigGroupResult, ConfigQuery, handle_config_group};
-use super::config_page::{ConfigPageChunks, EMPTY_SEGMENTS, PageTab, page_to_id};
-use super::responses::{send_json, send_text, send_text_string};
+use super::config_page::serve_config_page;
+use super::responses::{send_json, send_text};
 
 /// Buffer size for JSON config-group responses.
 const CONFIG_GROUP_JSON_BUF_SIZE: usize = 512;
@@ -28,33 +25,43 @@ const CONFIG_GROUP_JSON_BUF_SIZE: usize = 512;
 /// HTTP request handler for the config UI.
 ///
 /// Implements `edge_http::io::server::Handler` with manual routing for three endpoints:
-/// - `GET /` -- config page (streamed HTML)
+/// - `GET /` -- config page (single static HTML string)
 /// - `GET /config-group/<group>` -- config group JSON get/set via `?set=...`
 /// - `GET /config/<field>` -- single field get/set via `?set=...`
-pub struct ConfigHandler<R: RawMutex + 'static, C: ConfigApi + 'static, S: 'static> {
+///
+/// ## Lock ordering
+///
+/// When both `config` and `io` mutexes need to be held, `config` is always
+/// locked first, then `io` inside the `config` guard. Future code must
+/// preserve this order to prevent deadlocks.
+pub struct ConfigHandler<R: RawMutex + 'static, C: ConfigType + 'static, S: 'static> {
     /// Shared config mutex (read for GET, locked+mutated for SET).
-    pub config: &'static Mutex<R, C>,
+    pub(crate) config: &'static Mutex<R, C>,
     /// Shared storage mutex (used to persist after SET).
-    pub io: &'static Mutex<R, S>,
-    /// Which tab/group to show first (e.g. `"main"`).
-    pub default_group: &'static str,
-    /// `<h1>` heading on the config page.
-    pub page_heading: &'static str,
-    /// `<title>` of the config page.
-    pub title: &'static str,
-    /// Subtitle shown below the heading.
-    pub subtitle: &'static str,
-    /// Left navigation HTML.
-    pub nav_left: &'static str,
-    /// Right navigation HTML.
-    pub nav_right: &'static str,
-    /// Extra CSS appended after the built-in stylesheet.
-    pub extra_css: &'static str,
-    /// Callback invoked after a config update with the set of changed fields.
-    pub on_updated: Option<&'static (dyn Fn(C::ChangedSet) + Send)>,
+    pub(crate) io: &'static Mutex<R, S>,
+    /// Channel sender for notifying config changes.
+    pub(crate) notify: DynamicSender<'static, C::ChangedSet>,
     /// Whether to serve captive-portal redirects on this handler.
     #[cfg(feature = "captive")]
-    pub captive: bool,
+    pub(crate) captive: bool,
+}
+
+impl<R: RawMutex + 'static, C: ConfigType + 'static, S: 'static> ConfigHandler<R, C, S> {
+    /// Create a new config handler.
+    pub fn new(
+        config: &'static Mutex<R, C>,
+        io: &'static Mutex<R, S>,
+        notify: DynamicSender<'static, C::ChangedSet>,
+        #[cfg(feature = "captive")] captive: bool,
+    ) -> Self {
+        Self {
+            config,
+            io,
+            notify,
+            #[cfg(feature = "captive")]
+            captive,
+        }
+    }
 }
 
 /// Extract the `set` query parameter value from a path like `/config-group/foo?set=...`.
@@ -74,10 +81,15 @@ fn percent_decode(s: &str) -> alloc::string::String {
     let mut chars = s.as_bytes().iter();
     while let Some(&b) = chars.next() {
         if b == b'%' {
-            let hi = chars.next().copied().unwrap_or(b'0');
-            let lo = chars.next().copied().unwrap_or(b'0');
-            let val = hex_nibble(hi) << 4 | hex_nibble(lo);
-            out.push(val as char);
+            match (chars.next().copied(), chars.next().copied()) {
+                (Some(hi), Some(lo)) => {
+                    let val = hex_nibble(hi) << 4 | hex_nibble(lo);
+                    out.push(val as char);
+                }
+                _ => {
+                    out.push('%');
+                }
+            }
         } else if b == b'+' {
             out.push(' ');
         } else {
@@ -104,7 +116,7 @@ fn path_only(full: &str) -> &str {
 impl<R, C, S> edge_http::io::server::Handler for ConfigHandler<R, C, S>
 where
     R: RawMutex + 'static,
-    C: ConfigFormGen + ConfigGet + ConfigApi + ConfigLoadStore + Send,
+    C: ConfigType + Send,
     S: ConfigStorage + Send,
 {
     type Error<E: Debug> = Error<E>;
@@ -136,7 +148,7 @@ where
         let path = path_only(full_path);
 
         match path {
-            "/" => self.handle_root(conn).await,
+            "/" => serve_config_page::<C, T, N>(conn).await,
             p if p.starts_with("/config-group/") => {
                 let group = &p["/config-group/".len()..];
                 self.handle_config_group(conn, group, full_path).await
@@ -153,40 +165,9 @@ where
 impl<R, C, S> ConfigHandler<R, C, S>
 where
     R: RawMutex + 'static,
-    C: ConfigFormGen + ConfigGet + ConfigApi + ConfigLoadStore + Send,
+    C: ConfigType + Send,
     S: ConfigStorage + Send,
 {
-    async fn handle_root<T, const N: usize>(
-        &self,
-        conn: &mut Connection<'_, T, N>,
-    ) -> Result<(), Error<<T as ErrorType>::Error>>
-    where
-        T: Read + Write,
-    {
-        let mut pages = alloc::vec::Vec::new();
-        for name in C::page_names() {
-            let html_segments = C::html_segments_for_group(name).unwrap_or(EMPTY_SEGMENTS);
-            let js_segments = C::js_segments_for_group(name).unwrap_or(EMPTY_SEGMENTS);
-            pages.push(PageTab {
-                name,
-                html_segments,
-                js_segments,
-            });
-        }
-        let default_page_id = page_to_id(self.default_group);
-        let chunks = ConfigPageChunks {
-            page_heading: self.page_heading,
-            title: self.title,
-            subtitle: self.subtitle,
-            nav_left: self.nav_left,
-            nav_right: self.nav_right,
-            extra_css: self.extra_css,
-            pages,
-            default_page_id,
-        };
-        chunks.write_to(conn).await
-    }
-
     async fn handle_config_group<T, const N: usize>(
         &self,
         conn: &mut Connection<'_, T, N>,
@@ -200,18 +181,11 @@ where
             set: parse_set_param(full_path),
         };
         let mut buf = [0u8; CONFIG_GROUP_JSON_BUF_SIZE];
-        let result = handle_config_group(
-            self.config,
-            self.io,
-            group,
-            query,
-            &mut buf,
-            self.on_updated,
-        )
-        .await;
+        let result =
+            handle_config_group(self.config, self.io, group, query, &mut buf, self.notify).await;
         match result {
-            ConfigGroupResult::Json(json) => send_json(conn, &json).await,
-            ConfigGroupResult::Err(status, msg) => send_text(conn, status, &msg).await,
+            ConfigGroupResult::Json(json) => send_json(conn, json).await,
+            ConfigGroupResult::Err(status, msg) => send_text(conn, status, msg).await,
         }
     }
 
@@ -225,28 +199,92 @@ where
         T: Read + Write,
     {
         if let Some(set_value) = parse_set_param(full_path) {
-            let mut cfg = self.config.lock().await;
-            match cfg.set_field(field, &set_value) {
-                Ok(Some(changed)) => {
-                    if !changed.is_empty() {
-                        if let Err(_err) = cfg.store_to(&mut *self.io.lock().await).await {
-                            error!("http: config store failed");
-                            return send_text(conn, 500, "").await;
-                        }
-                        if let Some(f) = self.on_updated {
-                            f(changed);
+            // Perform mutation + persist under the lock, capture the HTTP status,
+            // then drop the guard BEFORE doing network I/O.
+            let status = {
+                let mut cfg = self.config.lock().await;
+                match cfg.set_field(field, &set_value) {
+                    Ok(Some(changed)) => {
+                        if !changed.is_empty() {
+                            if let Err(_err) = cfg.store_to(&mut *self.io.lock().await).await {
+                                error!("http: config store failed");
+                                500u16
+                            } else {
+                                let _ = self.notify.try_send(changed);
+                                200
+                            }
+                        } else {
+                            200
                         }
                     }
-                    send_text_string(conn, 200, set_value).await
+                    Ok(None) | Err(_) => 400,
                 }
-                Ok(None) => send_text(conn, 400, "Invalid key or value").await,
-                Err(_) => send_text(conn, 400, "Invalid key or value").await,
+            };
+            match status {
+                200 => send_text(conn, 200, &set_value).await,
+                500 => send_text(conn, 500, "").await,
+                _ => send_text(conn, 400, "Invalid key or value").await,
             }
         } else {
-            match crate::config_storage::ConfigGet::get(&*self.config.lock().await, field) {
-                Some(value) => send_text_string(conn, 200, value).await,
+            // Acquire lock, read the value, drop guard before network I/O.
+            let value = {
+                let guard = self.config.lock().await;
+                crate::config_storage::ConfigGet::get(&*guard, field)
+            };
+            match value {
+                Some(v) => send_text(conn, 200, &v).await,
                 None => send_text(conn, 404, "").await,
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use alloc::string::ToString;
+
+    #[test]
+    fn test_percent_decode_basic() {
+        assert_eq!(percent_decode("hello%20world"), "hello world");
+        assert_eq!(percent_decode("a+b"), "a b");
+        assert_eq!(percent_decode("100%25"), "100%");
+    }
+
+    #[test]
+    fn test_percent_decode_truncated() {
+        assert_eq!(percent_decode("abc%"), "abc%");
+        assert_eq!(percent_decode("abc%2"), "abc%");
+    }
+
+    #[test]
+    fn test_hex_nibble() {
+        assert_eq!(hex_nibble(b'0'), 0);
+        assert_eq!(hex_nibble(b'9'), 9);
+        assert_eq!(hex_nibble(b'a'), 10);
+        assert_eq!(hex_nibble(b'F'), 15);
+        assert_eq!(hex_nibble(b'z'), 0);
+    }
+
+    #[test]
+    fn test_parse_set_param() {
+        assert_eq!(
+            parse_set_param("/config-group/main?set=%7B%7D"),
+            Some("{}".to_string())
+        );
+        assert_eq!(parse_set_param("/config-group/main"), None);
+        assert_eq!(
+            parse_set_param("/config/field?other=1&set=hello"),
+            Some("hello".to_string())
+        );
+    }
+
+    #[test]
+    fn test_path_only() {
+        assert_eq!(
+            path_only("/config-group/main?set=foo"),
+            "/config-group/main"
+        );
+        assert_eq!(path_only("/config/field"), "/config/field");
     }
 }

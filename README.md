@@ -44,7 +44,7 @@ pub struct AppConfig {
 Initialize everything in one call:
 
 ```rust
-let (wifi_stacks, wifi_sender, config_handle, config_rx) =
+let (wifi_stacks, wifi_sender, config, config_rx) =
     esp_wifi_caddy::wifi_init!(AppConfig, spawner, peripherals.WIFI, flash, "config")
         .expect("wifi_init");
 ```
