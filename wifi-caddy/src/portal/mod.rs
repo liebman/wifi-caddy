@@ -110,10 +110,7 @@ pub async fn serve_loop_debug<H: Handler>(stack: Stack<'static>, handler: H) -> 
         .await
     {
         Ok(()) => error!("http: debug server exited unexpectedly"),
-        Err(e) => error!(
-            "http: debug server error: {}",
-            crate::fmt::DisplayFmt(&e)
-        ),
+        Err(e) => error!("http: debug server error: {}", crate::fmt::DisplayFmt(&e)),
     }
     loop {
         core::future::pending::<()>().await;
