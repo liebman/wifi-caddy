@@ -167,6 +167,13 @@ pub type WifiCommandReceiver =
 pub type WifiCommandSender =
     Sender<'static, CriticalSectionRawMutex, WifiCaddyCommand, WIFI_COMMAND_CHANNEL_CAPACITY>;
 
+/// Default AP IP address. Override by shadowing this constant in your crate
+/// or by forking if a different subnet is needed.
+pub const AP_IP_ADDRESS: Ipv4Address = Ipv4Address::new(192, 168, 2, 1);
+
+/// AP subnet prefix length (default /24 = 255.255.255.0).
+pub const AP_SUBNET_PREFIX: u8 = 24;
+
 /// STA and AP network stacks returned by [`init`].
 pub struct WifiStacks {
     /// Station (client) network stack — use for normal internet access.
@@ -190,8 +197,8 @@ pub async fn init(
     let sender = channel.sender();
     let sta_config: embassy_net::Config = embassy_net::Config::dhcpv4(Default::default());
     let ap_config = embassy_net::Config::ipv4_static(StaticConfigV4 {
-        address: Ipv4Cidr::new(Ipv4Address::new(192, 168, 2, 1), 24),
-        gateway: Some(Ipv4Address::new(192, 168, 2, 1)),
+        address: Ipv4Cidr::new(AP_IP_ADDRESS, AP_SUBNET_PREFIX),
+        gateway: Some(AP_IP_ADDRESS),
         dns_servers: Default::default(),
     });
 
