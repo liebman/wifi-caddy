@@ -30,14 +30,32 @@ const CONFIG_GROUP_JSON_BUF_SIZE: usize = 512;
 /// - `GET /config/<field>` -- single field get/set via `?set=...`
 pub struct ConfigHandler<R: RawMutex + 'static, C: ConfigType + 'static, S: 'static> {
     /// Shared config mutex (read for GET, locked+mutated for SET).
-    pub config: &'static Mutex<R, C>,
+    pub(crate) config: &'static Mutex<R, C>,
     /// Shared storage mutex (used to persist after SET).
-    pub io: &'static Mutex<R, S>,
+    pub(crate) io: &'static Mutex<R, S>,
     /// Channel sender for notifying config changes.
-    pub notify: DynamicSender<'static, C::ChangedSet>,
+    pub(crate) notify: DynamicSender<'static, C::ChangedSet>,
     /// Whether to serve captive-portal redirects on this handler.
     #[cfg(feature = "captive")]
-    pub captive: bool,
+    pub(crate) captive: bool,
+}
+
+impl<R: RawMutex + 'static, C: ConfigType + 'static, S: 'static> ConfigHandler<R, C, S> {
+    /// Create a new config handler.
+    pub fn new(
+        config: &'static Mutex<R, C>,
+        io: &'static Mutex<R, S>,
+        notify: DynamicSender<'static, C::ChangedSet>,
+        #[cfg(feature = "captive")] captive: bool,
+    ) -> Self {
+        Self {
+            config,
+            io,
+            notify,
+            #[cfg(feature = "captive")]
+            captive,
+        }
+    }
 }
 
 /// Extract the `set` query parameter value from a path like `/config-group/foo?set=...`.
