@@ -1,8 +1,8 @@
 //! Config storage codegen for `WifiCaddyConfig`: keys, load/store, accessors.
 
 use crate::utils::{
-    bump_stmt, consume_meta_value, fnv1a_hash, try_parse_lit_str, variant_ident_for_field,
-    FORMAT_VERSION_KEY, MAGIC_KEY,
+    FORMAT_VERSION_KEY, MAGIC_KEY, bump_stmt, consume_meta_value, fnv1a_hash, try_parse_lit_str,
+    variant_ident_for_field,
 };
 use proc_macro2::TokenStream;
 use quote::{format_ident, quote};

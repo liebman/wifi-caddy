@@ -1,6 +1,6 @@
 //! Group API and notify codegen for `WifiCaddyConfig`: JSON get/set, `ConfigServer` + update channel, statics.
 
-use crate::field_attrs::{parse_config_form_attr_into, ParsedFormAttrs};
+use crate::field_attrs::{ParsedFormAttrs, parse_config_form_attr_into};
 use crate::utils::{consume_meta_value, to_pascal_case, try_parse_lit_int, try_parse_lit_str};
 use proc_macro2::TokenStream;
 use quote::{format_ident, quote};

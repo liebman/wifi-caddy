@@ -1,7 +1,7 @@
 //! Config form codegen for `WifiCaddyConfig`: generates the entire config HTML page
 //! as a single `&'static str` at compile time.
 
-use crate::field_attrs::{parse_config_form_attr_into, ParsedFormAttrs};
+use crate::field_attrs::{ParsedFormAttrs, parse_config_form_attr_into};
 use crate::utils::{
     consume_meta_value, escape_html, escape_js_str, humanize_label, page_name_to_js_id,
     try_parse_lit_str,
