@@ -127,14 +127,10 @@ pub fn start<F>(
 where
     F: FnOnce(Spawner, Stack<'static>) -> Result<(), crate::Error>,
 {
-    spawner
-        .spawn(dhcp::run(ap_stack))
-        .map_err(|_| crate::Error::SpawnDhcp)?;
+    spawner.spawn(dhcp::run(ap_stack).map_err(|_| crate::Error::SpawnDhcp)?);
 
     #[cfg(feature = "captive")]
-    spawner
-        .spawn(dns::run(ap_stack))
-        .map_err(|_| crate::Error::SpawnDns)?;
+    spawner.spawn(dns::run(ap_stack).map_err(|_| crate::Error::SpawnDns)?);
 
     spawn_workers(spawner, ap_stack)?;
     Ok(())
