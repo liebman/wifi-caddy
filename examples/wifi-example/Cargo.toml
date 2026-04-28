@@ -80,22 +80,22 @@ wifi-caddy-proc = { path = "../../wifi-caddy-proc" }
 serde = { version = "1.0", default-features = false, features = ["derive", "alloc"] }
 serde-json-core = "0.6"
 
-esp-storage = { version = "0.8.1" }
+esp-storage = { version = "0.9.0" }
 
 esp-wifi-caddy = { path = "../../esp-wifi-caddy" }
-esp-hal = { version = "1.0.0", features = ["unstable"] }
-esp-alloc = { version = "0.9.0" }
-esp-rtos = { version = "0.2.0", features = ["embassy", "esp-alloc", "esp-radio"] }
-esp-radio = { version = "0.17.0", features = ["esp-alloc", "smoltcp", "unstable", "wifi"] }
-esp-backtrace = { version = "0.18.1", default-features = false, features = ["panic-handler"] }
-esp-bootloader-esp-idf = { version = "0.4.0", default-features = false }
-embassy-executor = { version = "0.9.1" }
+esp-hal = { version = "1.1.0", features = ["unstable"] }
+esp-alloc = { version = "0.10.0" }
+esp-rtos = { version = "0.3.0", features = ["embassy", "esp-alloc", "esp-radio"] }
+esp-radio = { version = "0.18.0", features = ["wifi"] }
+esp-backtrace = { version = "0.19.0", default-features = false, features = ["panic-handler"] }
+esp-bootloader-esp-idf = { version = "0.5.0", default-features = false }
+embassy-executor = { version = "0.10.0" }
 embassy-time = { version = "0.5.0" }
-embassy-sync = { version = "0.7.2" }
+embassy-sync = { version = "0.8" }
 embassy-futures = { version = "0.1.2" }
-embassy-net = { version = "0.8.0", features = ["dhcpv4", "medium-ethernet", "tcp", "udp", "dns"] }
+embassy-net = { version = "0.9.0", features = ["dhcpv4", "medium-ethernet", "tcp", "udp", "dns"] }
 defmt = { version = "1.0.1", optional = true }
 static_cell = { version = "2.1.1", default-features = false }
 enumset = { version = "1.1.10" }
-esp-println = "0.16.1"
+esp-println = "0.17.0"
 log = { version = "0.4", optional = true }
