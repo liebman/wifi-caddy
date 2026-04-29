@@ -116,14 +116,9 @@ async fn main(spawner: Spawner) {
     esp_alloc::heap_allocator!(size: 16 * 1024);
 
     let timg0 = TimerGroup::new(peripherals.TIMG0);
-    #[cfg(target_arch = "riscv32")]
     let sw_int =
         esp_hal::interrupt::software::SoftwareInterruptControl::new(peripherals.SW_INTERRUPT);
-    esp_rtos::start(
-        timg0.timer0,
-        #[cfg(target_arch = "riscv32")]
-        sw_int.software_interrupt0,
-    );
+    esp_rtos::start(timg0.timer0, sw_int.software_interrupt0);
 
     info!("wifi-example starting");
 
@@ -136,7 +131,7 @@ async fn main(spawner: Spawner) {
         esp_wifi_caddy::wifi_init!(AppConfig, spawner, peripherals.WIFI, flash, "config")
             .expect("wifi_init");
 
-    spawner.spawn(ip_address_task(wifi_stacks.sta)).ok();
+    spawner.spawn(ip_address_task(wifi_stacks.sta).unwrap());
     info!("IP address task spawned (reports IP changes)");
 
     {
@@ -153,9 +148,7 @@ async fn main(spawner: Spawner) {
                 .await;
         }
     }
-    spawner
-        .spawn(config_updated_task(config_rx, config, wifi_sender))
-        .ok();
+    spawner.spawn(config_updated_task(config_rx, config, wifi_sender).unwrap());
     info!("wifi config task spawned (awaits config updates)");
 
     let mut button_pin = esp_hal::gpio::Input::new(

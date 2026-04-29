@@ -19,17 +19,14 @@ use embassy_sync::channel::{Channel, Receiver, Sender};
 use embassy_time::Duration;
 use embassy_time::Instant;
 use embassy_time::Timer;
-use enumset::EnumSet;
 use esp_hal::peripherals::WIFI;
 use esp_hal::rng::Rng;
-use esp_radio::Controller;
-use esp_radio::wifi::AccessPointConfig;
-use esp_radio::wifi::ClientConfig;
-use esp_radio::wifi::ModeConfig;
+use esp_radio::wifi::Config;
+use esp_radio::wifi::ControllerConfig;
+use esp_radio::wifi::Interface;
 use esp_radio::wifi::WifiController;
-use esp_radio::wifi::WifiDevice;
-use esp_radio::wifi::WifiEvent;
-use esp_radio::wifi::WifiStaState;
+use esp_radio::wifi::ap::AccessPointConfig;
+use esp_radio::wifi::sta::StationConfig;
 
 // fmt must be first: its macro_rules! macros (info!, warn!, etc.) are used by all other modules.
 mod fmt;
@@ -207,16 +204,10 @@ pub async fn init(
     let rng = Rng::new();
     let seed = (rng.random() as u64) << 32 | rng.random() as u64;
 
-    let esp_wifi_ctrl = &*mk_static!(
-        Controller<'static>,
-        esp_radio::init().map_err(|_| Error::WifiInit)?
-    );
-
-    let wifi_config = esp_radio::wifi::Config::default();
     let (controller, interfaces) =
-        esp_radio::wifi::new(esp_wifi_ctrl, wifi, wifi_config).map_err(|_| Error::WifiInit)?;
-    let ap_interface = interfaces.ap;
-    let sta_interface = interfaces.sta;
+        esp_radio::wifi::new(wifi, ControllerConfig::default()).map_err(|_| Error::WifiInit)?;
+    let ap_interface = interfaces.access_point;
+    let sta_interface = interfaces.station;
 
     let ap_mac: [u8; 6] = ap_interface.mac_address();
     info!("wifi: starting network stack");
@@ -238,15 +229,9 @@ pub async fn init(
         ),
         seed,
     );
-    spawner
-        .spawn(connection(controller, ap_mac, wifi_commands))
-        .map_err(|_| Error::WifiInit)?;
-    spawner
-        .spawn(ap_task(ap_runner))
-        .map_err(|_| Error::WifiInit)?;
-    spawner
-        .spawn(sta_task(sta_runner))
-        .map_err(|_| Error::WifiInit)?;
+    spawner.spawn(connection(controller, ap_mac, wifi_commands).map_err(|_| Error::WifiInit)?);
+    spawner.spawn(ap_task(ap_runner).map_err(|_| Error::WifiInit)?);
+    spawner.spawn(sta_task(sta_runner).map_err(|_| Error::WifiInit)?);
     Ok((
         WifiStacks {
             sta: sta_stack,
@@ -310,56 +295,35 @@ impl WifiRunner {
         ap_ssid
     }
 
-    fn current_config(&self) -> ModeConfig {
+    fn current_config(&self) -> Option<Config> {
         if !self.ap_up && self.ssid.is_empty() {
-            ModeConfig::None
+            None
         } else if !self.ap_up && !self.ssid.is_empty() {
-            ModeConfig::Client(
-                ClientConfig::default()
-                    .with_ssid(self.ssid.as_str().into())
+            Some(Config::Station(
+                StationConfig::default()
+                    .with_ssid(self.ssid.as_str())
                     .with_password(self.pass.as_str().into()),
-            )
+            ))
         } else if self.ap_up && self.ssid.is_empty() {
-            ModeConfig::AccessPoint(
+            Some(Config::AccessPoint(
                 AccessPointConfig::default()
-                    .with_ssid(self.ap_ssid().as_str().into())
-                    .with_password("".into()),
-            )
+                    .with_ssid(self.ap_ssid().as_str()),
+            ))
         } else {
-            ModeConfig::ApSta(
-                ClientConfig::default()
-                    .with_ssid(self.ssid.as_str().into())
+            Some(Config::AccessPointStation(
+                StationConfig::default()
+                    .with_ssid(self.ssid.as_str())
                     .with_password(self.pass.as_str().into()),
                 AccessPointConfig::default()
-                    .with_ssid(self.ap_ssid().as_str().into())
-                    .with_password("".into()),
-            )
+                    .with_ssid(self.ap_ssid().as_str()),
+            ))
         }
     }
 
-    fn apply_config(&mut self, config: &ModeConfig) {
+    fn apply_config(&mut self, config: &Config) {
         if let Err(e) = self.controller.set_config(config) {
             warn!("wifi: connection task: failed to set config: {:?}", e);
         }
-    }
-
-    async fn ensure_wifi_started_with_config(&mut self, config: &ModeConfig) -> Result<(), ()> {
-        if matches!(config, ModeConfig::None) {
-            return Ok(());
-        }
-        if !matches!(self.controller.is_started(), Ok(true)) {
-            debug!("wifi: ensure_wifi_started_with_config: configuring wifi");
-            self.apply_config(config);
-            debug!("wifi: ensure_wifi_started_with_config: starting wifi");
-            self.controller.start_async().await.map_err(|e| {
-                error!("wifi: failed to start controller: {:?}", e);
-            })?;
-            debug!("wifi: ensure_wifi_started_with_config: started wifi!");
-        } else {
-            debug!("wifi: ensure_wifi_started_with_config: update wifi config");
-            self.apply_config(config);
-        }
-        Ok(())
     }
 
     /// Attempt STA connection. Returns `true` on success or if already
@@ -367,10 +331,6 @@ impl WifiRunner {
     /// should schedule a retry via `reconnect_at`).
     async fn try_connect_sta(&mut self) -> bool {
         if self.ssid.is_empty() {
-            return true;
-        }
-        let state = esp_radio::wifi::sta_state();
-        if state == WifiStaState::Connected {
             return true;
         }
         debug!("wifi: connection task: connecting to wifi");
@@ -386,57 +346,37 @@ impl WifiRunner {
         }
     }
 
-    async fn sync_state(&mut self) {
-        let config = self.current_config();
-        if self.ensure_wifi_started_with_config(&config).await.is_err() {
-            self.schedule_reconnect();
-            return;
+    async fn sync_state(&mut self, connect_sta: bool) {
+        if let Some(config) = self.current_config() {
+            debug!("wifi: sync_state: applying config");
+            self.apply_config(&config);
         }
-        if !self.try_connect_sta().await {
-            self.schedule_reconnect();
+        if connect_sta && !self.ssid.is_empty() {
+            if !self.try_connect_sta().await {
+                self.schedule_reconnect();
+            }
         }
     }
 
-    async fn handle_command(&mut self, cmd: WifiCaddyCommand) {
+    async fn handle_command(&mut self, cmd: WifiCaddyCommand) -> bool {
         match cmd {
             WifiCaddyCommand::APUp(prefix) => {
                 info!("wifi: connection task: APUp command");
                 self.ap_ssid_prefix = prefix;
                 self.ap_up = true;
+                true
             }
             WifiCaddyCommand::APDown => {
                 info!("wifi: connection task: APDown command");
                 self.ap_up = false;
+                true
             }
             WifiCaddyCommand::StaUp(new_ssid, new_pass) => {
                 info!("wifi: connection task: StaUp command");
                 self.ssid = new_ssid;
                 self.pass = new_pass;
                 self.reconnect_at = None;
-            }
-        }
-    }
-
-    fn handle_wifi_events<I>(&mut self, events: I)
-    where
-        I: IntoIterator<Item = WifiEvent>,
-    {
-        for event in events {
-            match event {
-                WifiEvent::StaConnected => {
-                    info!("wifi: connection task: StaConnected");
-                    self.reconnect_at = None;
-                }
-                WifiEvent::StaDisconnected => {
-                    warn!(
-                        "wifi: connection task: StaDisconnected - reconnect in {}s",
-                        STA_RECONNECT_DELAY_MS / 1000
-                    );
-                    self.schedule_reconnect();
-                }
-                _ => {
-                    debug!("wifi: connection task: event: {:?}", event);
-                }
+                false
             }
         }
     }
@@ -447,23 +387,26 @@ impl WifiRunner {
 
     async fn run(&mut self) {
         debug!("start connection task");
-        self.sync_state().await;
+        self.sync_state(false).await;
 
         loop {
             match select3(
                 self.wifi_commands.receive(),
-                self.controller.wait_for_events(EnumSet::all(), false),
+                self.controller.wait_for_disconnect_async(),
                 reconnect_timer(self.reconnect_at),
             )
             .await
             {
                 Either3::First(cmd) => {
-                    self.handle_command(cmd).await;
-                    self.sync_state().await;
+                    let mode_change = self.handle_command(cmd).await;
+                    self.sync_state(mode_change || !self.ssid.is_empty()).await;
                 }
-                Either3::Second(events) => {
-                    debug!("wifi: connection task: events: {:?}", events);
-                    self.handle_wifi_events(events);
+                Either3::Second(_disconnect_info) => {
+                    warn!(
+                        "wifi: connection task: StaDisconnected - reconnect in {}s",
+                        STA_RECONNECT_DELAY_MS / 1000
+                    );
+                    self.schedule_reconnect();
                 }
                 Either3::Third(_) => {
                     self.reconnect_at = None;
@@ -487,13 +430,13 @@ async fn connection(
 }
 
 #[embassy_executor::task]
-async fn sta_task(mut runner: Runner<'static, WifiDevice<'static>>) {
+async fn sta_task(mut runner: Runner<'static, Interface<'static>>) {
     info!("start STA task");
     runner.run().await;
 }
 
 #[embassy_executor::task]
-async fn ap_task(mut runner: Runner<'static, WifiDevice<'static>>) {
+async fn ap_task(mut runner: Runner<'static, Interface<'static>>) {
     info!("start AP task");
     runner.run().await;
 }
@@ -638,9 +581,10 @@ macro_rules! _wifi_init_debug_worker {
             .await
         }
 
-        $spawner
-            .spawn(_config_http_worker_debug($sta_stack, $config, $io, $notify))
-            .map_err(|_| $crate::Error::SpawnHttpWorker)?;
+        $spawner.spawn(
+            _config_http_worker_debug($sta_stack, $config, $io, $notify)
+                .map_err(|_| $crate::Error::SpawnHttpWorker)?,
+        );
     };
 }
 
@@ -699,8 +643,10 @@ macro_rules! _wifi_init_workers {
                 <$Config as $crate::config_storage::ConfigApi>::ChangedSet,
             >,
         ) -> Result<(), $crate::Error> {
-            s.spawn(_config_http_worker(ap_stack, config, io, notify))
-                .map_err(|_| $crate::Error::SpawnHttpWorker)?;
+            s.spawn(
+                _config_http_worker(ap_stack, config, io, notify)
+                    .map_err(|_| $crate::Error::SpawnHttpWorker)?,
+            );
             $crate::_wifi_init_debug_worker!($Config, s, _sta_stack, config, io, notify);
             Ok(())
         }
