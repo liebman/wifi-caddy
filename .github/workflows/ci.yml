@@ -82,7 +82,7 @@ jobs:
       - name: Install Xtensa toolchain
         uses: esp-rs/xtensa-toolchain@v1.6
         with:
-          version: 1.93.0.0
+          version: 1.95.0.0
 
       - name: Install RISC-V toolchain
         uses: dtolnay/rust-toolchain@v1
