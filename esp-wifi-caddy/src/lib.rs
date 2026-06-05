@@ -204,10 +204,10 @@ pub async fn init(
     let rng = Rng::new();
     let seed = (rng.random() as u64) << 32 | rng.random() as u64;
 
-    let (controller, interfaces) =
-        esp_radio::wifi::new(wifi, ControllerConfig::default()).map_err(|_| Error::WifiInit)?;
-    let ap_interface = interfaces.access_point;
-    let sta_interface = interfaces.station;
+    let controller =
+        WifiController::new(wifi, ControllerConfig::default()).map_err(|_| Error::WifiInit)?;
+    let sta_interface = Interface::station();
+    let ap_interface = Interface::access_point();
 
     let ap_mac: [u8; 6] = ap_interface.mac_address();
     info!("wifi: starting network stack");
@@ -430,13 +430,13 @@ async fn connection(
 }
 
 #[embassy_executor::task]
-async fn sta_task(mut runner: Runner<'static, Interface<'static>>) {
+async fn sta_task(mut runner: Runner<'static, Interface>) {
     info!("start STA task");
     runner.run().await;
 }
 
 #[embassy_executor::task]
-async fn ap_task(mut runner: Runner<'static, Interface<'static>>) {
+async fn ap_task(mut runner: Runner<'static, Interface>) {
     info!("start AP task");
     runner.run().await;
 }
