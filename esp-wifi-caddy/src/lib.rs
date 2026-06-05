@@ -306,16 +306,14 @@ impl WifiRunner {
             ))
         } else if self.ap_up && self.ssid.is_empty() {
             Some(Config::AccessPoint(
-                AccessPointConfig::default()
-                    .with_ssid(self.ap_ssid().as_str()),
+                AccessPointConfig::default().with_ssid(self.ap_ssid().as_str()),
             ))
         } else {
             Some(Config::AccessPointStation(
                 StationConfig::default()
                     .with_ssid(self.ssid.as_str())
                     .with_password(self.pass.as_str().into()),
-                AccessPointConfig::default()
-                    .with_ssid(self.ap_ssid().as_str()),
+                AccessPointConfig::default().with_ssid(self.ap_ssid().as_str()),
             ))
         }
     }
