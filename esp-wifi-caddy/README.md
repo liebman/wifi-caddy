@@ -78,7 +78,7 @@ wifi-caddy-proc   = "0.1.0"
 esp-wifi-caddy    = "0.1.0"
 serde             = { version = "1.0", default-features = false, features = ["derive", "alloc"] }
 serde-json-core   = "0.6"
-esp-storage       = "0.8.1"
+esp-storage       = "0.10.0"
 ```
 
 See [wifi-example/Cargo.toml](../examples/wifi-example/Cargo.toml) for a

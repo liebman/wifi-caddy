@@ -27,6 +27,7 @@ use esp_radio::wifi::Interface;
 use esp_radio::wifi::WifiController;
 use esp_radio::wifi::ap::AccessPointConfig;
 use esp_radio::wifi::sta::StationConfig;
+use esp_radio::wifi::{AuthenticationMethodConfig, Password, Ssid};
 
 // fmt must be first: its macro_rules! macros (info!, warn!, etc.) are used by all other modules.
 mod fmt;
@@ -295,25 +296,40 @@ impl WifiRunner {
         ap_ssid
     }
 
+    fn sta_config(&self) -> StationConfig {
+        let ssid = Ssid::try_from(self.ssid.as_str())
+            .expect("SSID length bounded by WifiSsid (<= 32 bytes)");
+        let authentication = if self.pass.is_empty() {
+            AuthenticationMethodConfig::Open
+        } else {
+            AuthenticationMethodConfig::Wpa2Personal(
+                Password::try_from(self.pass.as_str())
+                    .expect("pass length bounded by WifiPass (<= 64 bytes)"),
+            )
+        };
+        StationConfig::default()
+            .with_ssid(ssid)
+            .with_authentication(authentication)
+    }
+
+    fn ap_config(&self) -> AccessPointConfig {
+        let ssid = Ssid::try_from(self.ap_ssid().as_str()).expect(
+            "AP SSID length bounded by WifiApSsidPrefix + MAC (<= 32 bytes)",
+        );
+        AccessPointConfig::default().with_ssid(ssid)
+    }
+
     fn current_config(&self) -> Option<Config> {
         if !self.ap_up && self.ssid.is_empty() {
             None
         } else if !self.ap_up && !self.ssid.is_empty() {
-            Some(Config::Station(
-                StationConfig::default()
-                    .with_ssid(self.ssid.as_str())
-                    .with_password(self.pass.as_str().into()),
-            ))
+            Some(Config::Station(self.sta_config()))
         } else if self.ap_up && self.ssid.is_empty() {
-            Some(Config::AccessPoint(
-                AccessPointConfig::default().with_ssid(self.ap_ssid().as_str()),
-            ))
+            Some(Config::AccessPoint(self.ap_config()))
         } else {
             Some(Config::AccessPointStation(
-                StationConfig::default()
-                    .with_ssid(self.ssid.as_str())
-                    .with_password(self.pass.as_str().into()),
-                AccessPointConfig::default().with_ssid(self.ap_ssid().as_str()),
+                self.sta_config(),
+                self.ap_config(),
             ))
         }
     }

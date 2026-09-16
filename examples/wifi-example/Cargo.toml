@@ -77,25 +77,60 @@ debug-server = ["esp-wifi-caddy/debug-server"]
 [dependencies]
 wifi-caddy = { path = "../../wifi-caddy" }
 wifi-caddy-proc = { path = "../../wifi-caddy-proc" }
-serde = { version = "1.0", default-features = false, features = ["derive", "alloc"] }
+serde = { version = "1.0", default-features = false, features = [
+    "derive",
+    "alloc",
+] }
 serde-json-core = "0.6"
 
-esp-storage = { version = "0.9.0" }
+esp-storage = { version = "0.10.0" }
 
 esp-wifi-caddy = { path = "../../esp-wifi-caddy" }
-esp-hal = { version = "1.1.0", features = ["unstable"] }
-esp-alloc = { version = "0.10.0" }
-esp-rtos = { version = "0.3.0", features = ["embassy", "esp-alloc", "esp-radio"] }
-esp-radio = { version = "=1.0.0-beta.0", features = ["wifi"] }
-esp-backtrace = { version = "0.19.0", default-features = false, features = ["panic-handler"] }
-esp-bootloader-esp-idf = { version = "0.5.0", default-features = false }
+# Keep this in sync with the local checkout patched in [patch.crates-io] below: a
+# patch only takes effect when its version satisfies this requirement, otherwise
+# cargo silently pulls a second `esp_hal` from crates.io (duplicate types + a
+# second `esp-hal-procmacros` without `__esp_idf_bootloader`).
+esp-hal = { version = "~1.2.1", features = ["unstable"] }
+esp-alloc = { version = "0.11.0" }
+esp-rtos = { version = "0.4.0", features = [
+    "embassy",
+    "esp-alloc",
+    "esp-radio",
+] }
+esp-radio = { version = "=1.0.0-beta.1", features = ["wifi"] }
+esp-backtrace = { version = "0.20.0", default-features = false, features = [
+    "panic-handler",
+] }
+esp-bootloader-esp-idf = { version = "0.6.0", default-features = false }
 embassy-executor = { version = "0.10.0" }
 embassy-time = { version = "0.5.0" }
 embassy-sync = { version = "0.8" }
 embassy-futures = { version = "0.1.2" }
-embassy-net = { version = "0.9.0", features = ["dhcpv4", "medium-ethernet", "tcp", "udp", "dns"] }
+embassy-net = { version = "0.9.0", features = [
+    "dhcpv4",
+    "medium-ethernet",
+    "tcp",
+    "udp",
+    "dns",
+] }
 defmt = { version = "1.0.1", optional = true }
 static_cell = { version = "2.1.1", default-features = false }
 enumset = { version = "1.1.10" }
-esp-println = "0.17.0"
+esp-println = "0.18.0"
 log = { version = "0.4", optional = true }
+
+# [patch.crates-io]
+# esp-alloc = { path = "../../../esp-hal/esp-alloc" }
+# esp-backtrace = { path = "../../../esp-hal/esp-backtrace" }
+# esp-bootloader-esp-idf = { path = "../../../esp-hal/esp-bootloader-esp-idf" }
+# esp-hal = { path = "../../../esp-hal/esp-hal" }
+# esp-phy = { path = "../../../esp-hal/esp-phy" }
+# esp-println = { path = "../../../esp-hal/esp-println" }
+# esp-radio = { path = "../../../esp-hal/esp-radio" }
+# esp-radio-rtos-driver = { path = "../../../esp-hal/esp-radio-rtos-driver" }
+# esp-riscv-rt = { path = "../../../esp-hal/esp-riscv-rt" }
+# esp-rom-sys = { path = "../../../esp-hal/esp-rom-sys" }
+# esp-rtos = { path = "../../../esp-hal/esp-rtos" }
+# esp-storage = { path = "../../../esp-hal/esp-storage" }
+# esp-sync = { path = "../../../esp-hal/esp-sync" }
+# xtensa-lx-rt = { path = "../../../esp-hal/xtensa-lx-rt" }
