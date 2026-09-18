@@ -75,8 +75,10 @@ esp32c6 = [
 debug-server = ["esp-wifi-caddy/debug-server"]
 
 [dependencies]
+esp-wifi-caddy = { path = "../../esp-wifi-caddy" }
 wifi-caddy = { path = "../../wifi-caddy" }
 wifi-caddy-proc = { path = "../../wifi-caddy-proc" }
+
 serde = { version = "1.0", default-features = false, features = [
     "derive",
     "alloc",
@@ -85,12 +87,11 @@ serde-json-core = "0.6"
 
 esp-storage = { version = "0.10.0" }
 
-esp-wifi-caddy = { path = "../../esp-wifi-caddy" }
 # Keep this in sync with the local checkout patched in [patch.crates-io] below: a
 # patch only takes effect when its version satisfies this requirement, otherwise
 # cargo silently pulls a second `esp_hal` from crates.io (duplicate types + a
 # second `esp-hal-procmacros` without `__esp_idf_bootloader`).
-esp-hal = { version = "~1.2.1", features = ["unstable"] }
+esp-hal = { version = "~1.2.2", features = ["unstable"] }
 esp-alloc = { version = "0.11.0" }
 esp-rtos = { version = "0.4.0", features = [
     "embassy",
