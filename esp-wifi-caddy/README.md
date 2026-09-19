@@ -151,6 +151,12 @@ The config UI supports multiple tabs when you use `page = "Name"` on `#[config_f
 loads its data on first visit (lazy load) and shows a loading overlay until ready. Use
 `#[config_ui(default_group = "Network")]` to choose which tab is active on load.
 
+Each tab is an independent `<form>` backed by its own config group, so **Save and Reload act only
+on the active tab**: Save persists just that tab's fields (one `GET /config-group/<Page>` request)
+and reports "`<Page>` saved". Edits made on a tab you have not saved are kept in the page — they
+survive switching tabs — and the tab shows a dot marker as a reminder that it still needs to be
+saved on that tab.
+
 ### Config page layout and CSS customization
 
 The config page is a single HTML document with one `<style>` block: built-in CSS first, then any
@@ -176,7 +182,7 @@ selectors match.
       </div>
       <div class="config-tab-panel">
         <div class="config-loading-overlay"> …
-        <form id="configForm-…">
+        <form id="configForm-…">   -- one form per tab; Save posts only this group
           <div class="config-form">
             <fieldset class="config-form-fieldset">
               <legend class="config-form-legend"> …
@@ -214,6 +220,7 @@ selectors match.
 | `.config-tabs` | Tab bar container |
 | `.config-tab` | Inactive tab |
 | `button.config-tab.active` | Active tab (default: blue gradient) |
+| `button.config-tab.dirty` | Tab with unsaved edits (dot marker) |
 | `.config-tab-panel` | Tab content panel |
 | `.config-loading-overlay` | Loading spinner overlay |
 | `.message`, `.message.success`, `.message.error` | Flash messages |

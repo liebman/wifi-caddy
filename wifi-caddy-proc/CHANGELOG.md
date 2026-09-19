@@ -16,6 +16,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `ConfigChange` fires a catchall `Changed` variant for fields without explicit `notify = "..."` instead of silently ignoring them. ([#4])
 - Improved error diagnostics: parse errors surface as `compile_error!`, hash collision messages include field names, `fnv1a_hash` has compile-time golden-value assertions. ([#4])
 - Edition bumped to 2024. ([#4])
+- Config page tabs save and report per page (`"<Page> saved"` instead of a generic
+  "Configuration saved"), and a tab with unsaved edits shows a dot marker.
 
 ### Added
 

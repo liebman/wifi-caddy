@@ -64,7 +64,7 @@ pub struct AppConfig {
 }
 ```
 
-With `esp-wifi-caddy`, use `esp_wifi_caddy::wifi_init!(AppConfig, ...)` to start the HTTP config server. Use `page = "Name"` on `#[config_form]` to split fields across multiple tabs; omit it for single-page (group `"main"`).
+With `esp-wifi-caddy`, use `esp_wifi_caddy::wifi_init!(AppConfig, ...)` to start the HTTP config server. Use `page = "Name"` on `#[config_form]` to split fields across multiple tabs; omit it for single-page (group `"main"`). Tabs save independently — the Save button on a tab persists only that page's fields — so save each tab you edit.
 
 ## Dependencies required by generated code
 
@@ -115,7 +115,7 @@ Use these on your config struct and its fields when deriving `WifiCaddyConfig`.
 
 ### `#[config_form(...)]` (per field)
 
-- `page = "Name"` – assign this field to a tab. All fields with the same page appear on that tab. Omit for single-page (default `"main"`). Groups (fieldsets) cannot span pages.
+- `page = "Name"` – assign this field to a tab. All fields with the same page appear on that tab. Omit for single-page (default `"main"`). Groups (fieldsets) cannot span pages. Each page is generated as an independent form and config group: its Save/Reload buttons act only on that page's fields (posting to `/config-group/<page>`), and a page with unsaved edits gets a dot on its tab.
 - `fieldset = "Legend Text"` – wrap in a `<fieldset>` with that legend.
 - `help = "..."` – help text.
 - `input_type = "password"` – override the HTML input type; default is inferred from the field type (`"number"` for integers/floats, `"text"` for `String`).

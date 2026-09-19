@@ -143,6 +143,9 @@ espup install    # or: espup update
 4. The AP starts at boot when the config has no STA credentials (a fresh device
    has no other way in); the boot button (GPIO 0) toggles the AP off and on with
    each press.
+5. The **Network** and **Example** tabs save independently: each has its own Save
+   button, so the WiFi credentials persist only when you press Save on the
+   **Network** tab. A tab with unsaved edits shows a dot until it is saved.
 
 ## Captive portal
 
