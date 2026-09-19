@@ -94,16 +94,21 @@ and the `#[config_crate(...)]` override.
 
 This is the recommended path for most applications.
 
-Your `Cargo.toml` needs these dependencies (beyond the usual `esp-hal` / `esp-rtos` /
-`esp-radio` / `embassy-*` stack). The derive routes the code it generates through
-this crate, so the rest of the config stack comes along with it:
+Your `Cargo.toml` needs these dependencies plus one chip feature (beyond the
+`esp-hal` / `esp-rtos` / `embassy-*` crates your own application code uses). The
+derive routes the code it generates through this crate, so the rest of the config
+stack comes along with it:
 
 ```toml
 [dependencies]
-esp-wifi-caddy    = "0.1.0"
+esp-wifi-caddy    = { version = "0.1.0", features = ["esp32s3"] }
 enumset           = "1.1"
 esp-storage       = "0.10.0"
 ```
+
+The chip feature (`esp32s3` above — see [Chip selection](#chip-selection))
+forwards the selection to `esp-radio` and the rest of the `esp-*` stack, so
+`esp-radio` does not need an entry of its own.
 
 See [wifi-example/Cargo.toml](../examples/wifi-example/Cargo.toml) for a
 complete working example.
@@ -275,11 +280,12 @@ These are used directly in application code:
 
 | Feature | Default | Description |
 |---------|---------|-------------|
-| `defmt` | no | defmt logging |
-| `log` | no | log crate logging (mutually exclusive with `defmt`) |
+| `defmt` | no | defmt logging (forwards to `esp-radio`, `embassy-*` and `wifi-caddy`) |
+| `log` | no | log crate logging (forwards to `esp-radio/log-04` and `wifi-caddy`; mutually exclusive with `defmt`) |
 | `captive` | yes | DNS captive-portal redirect on AP |
 | `debug-server` | no | Additional HTTP server on the STA interface (forwards to `wifi-caddy`) |
 | `nightly` | no | Enables the `impl_trait_in_assoc_type` nightly feature. **Enable this if `embassy-executor` is built with its `nightly` feature**, so that task and async code compiles correctly. |
+| chip feature | no | Selects the target chip — enable **exactly one** of `esp32`, `esp32c2`, `esp32c3`, `esp32c5`, `esp32c6`, `esp32c61`, `esp32s2`, `esp32s3`, `esp32s31` |
 
 **Feature dependencies:**
 
@@ -287,14 +293,46 @@ These are used directly in application code:
 - `captive` forwards to `wifi-caddy`'s `captive` feature (captive DNS on the AP).
 - To build without captive DNS, set `default-features = false` on `esp-wifi-caddy` (or disable `captive` explicitly).
 
+### Chip selection
+
+Enable exactly one of the chip features; it forwards the chip to `esp-radio`
+(including its Wi-Fi driver) and to `esp-hal`, `esp-rtos`, `esp-storage`,
+`esp-alloc` and `esp-bootloader-esp-idf`:
+
+```toml
+[dependencies]
+esp-wifi-caddy = { version = "0.1.0", features = ["esp32s3"] }
+```
+
+Because the chip selection travels with `esp-wifi-caddy`, an `esp-radio`
+dependency (and its chip feature) is not needed in your own `Cargo.toml`. The same
+goes for `esp-radio`'s `log-04` / `defmt` features, which follow this crate's
+`log` / `defmt` features.
+
+The list covers every Wi-Fi capable chip `esp-radio` supports. `esp32h2` and
+`esp32p4` are deliberately not offered: those parts have no Wi-Fi driver, and this
+crate always enables `esp-radio/wifi`, which makes `esp-radio`'s build script
+abort for them. `esp32s31` additionally needs a recent `esp-metadata-generated`
+(>= 0.5.2) in the dependency graph for `esp-radio`'s Wi-Fi driver to be available,
+and an `esp` toolchain that ships the `xtensa-esp32s31-none-elf` target (the
+1.97.0.0 release does not include it yet).
+
 ## Prerequisites
 
-1. **ESP Rust toolchain** — install via [espup](https://github.com/esp-rs/espup):
+1. **ESP Rust toolchain** — install via [espup](https://github.com/esp-rs/espup).
+   This crate is built with Espressif's **1.97.0.0** toolchain (rustc 1.97), which
+   is also its MSRV; `espup install` installs the latest release and
+   `espup update` upgrades an existing install:
 
    ```bash
    cargo install espup
-   espup install
+   espup install    # or: espup update
    ```
+
+   A local `rust-toolchain.toml` (`channel = "esp"`, gitignored so each checkout
+   can choose) makes cargo use that toolchain, whose `rust-src` component is
+   required by the `-Zbuild-std` builds for Xtensa targets. RISC-V targets work
+   with either the `esp` toolchain or `rustup target add` on a regular toolchain.
 
 2. **espflash** — for flashing and monitoring:
 

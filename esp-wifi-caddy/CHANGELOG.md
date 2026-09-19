@@ -22,9 +22,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `wifi_init!` / `mk_static!` expansions now reach `embassy_sync`, `embassy_net`,
   `embassy_executor` and `static_cell` through `$crate::` paths instead of
   injecting those bare crate names into application code.
+- **Chip features for every Wi-Fi capable chip `esp-radio` supports:** `esp32`,
+  `esp32c2`, `esp32c3`, `esp32c5`, `esp32c6`, `esp32c61`, `esp32s2`, `esp32s3`
+  and `esp32s31`. Each one forwards the chip feature to `esp-radio` — and to
+  `esp-hal`, `esp-rtos`, `esp-storage`, `esp-alloc` and
+  `esp-bootloader-esp-idf` — so an application does not need an `esp-radio`
+  dependency of its own to select a chip.
+- `log` now forwards to `esp-radio/log-04`, matching the existing
+  `esp-radio/defmt` forwarding of the `defmt` feature.
 
 ### Changed
 
+- **The target chip is selected with an `esp-wifi-caddy` chip feature** instead of
+  enabling the chip feature on `esp-radio` (and the rest of the `esp-*` stack) in
+  the application's own `Cargo.toml`. Nothing changed for existing config users
+  beyond the ability to drop their `esp-radio` dependency.
+- **MSRV is now Rust 1.97** (was 1.93), matching Espressif's `esp` toolchain
+  1.97.0.0 that this crate — and `esp-radio` 1.0.0-beta.1 — are built with.
+  `rust-toolchain.toml` selects that toolchain and its `rust-src` component.
 - **Breaking:** `WifiCaddyCommand` uses `heapless::String` types (`WifiSsid`, `WifiPass`, `WifiApSsidPrefix`) instead of `alloc::string::String`. ([#4], closes [#3])
 - **Breaking:** Removed `config` and `partition-table` feature gates — flash storage and partition lookup are always compiled in. ([#4])
 - `FlashConfigStorage` uses type-state (`Unmounted` → `Mounted`) and no longer heap-allocates. ([#4])

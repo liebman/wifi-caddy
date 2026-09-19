@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2024"
 authors = ["liebman <liebman@zod.com>"]
 license = "MIT OR Apache-2.0"
-rust-version = "1.93"
+rust-version = "1.97"
 description = "WiFi STA+AP manager for Embassy (esp-radio, embassy-net)"
 repository = "https://github.com/liebman/wifi-caddy"
 keywords = ["esp32", "wifi", "embassy", "embedded", "captive-portal"]
@@ -20,18 +20,101 @@ defmt = [
     "embassy-net/defmt",
     "wifi-caddy/defmt",
 ]
-log = ["dep:log", "wifi-caddy/log"]
+log = [
+    "dep:log",
+    "esp-radio/log-04",
+    "wifi-caddy/log",
+]
 captive = ["wifi-caddy/captive"]
 debug-server = ["wifi-caddy/debug-server"]
 
 # this feature is required for the docs.rs build and release builds to work
 esp-hal-unstable = ["esp-hal/unstable"]
+
+# ---------------------------------------------------------------------------
+# Chip selection
+# ---------------------------------------------------------------------------
+# Enable exactly one of the following features to select the target chip. Each
+# one forwards the chip feature to `esp-radio` — so an application does not need
+# an `esp-radio` dependency of its own to select a chip — and to the rest of the
+# `esp-*` stack this crate builds on.
+#
+# Only Wi-Fi capable chips are listed. `esp-radio` also has `esp32h2` and
+# `esp32p4` chip features, but those parts have no Wi-Fi driver and this crate
+# always enables `esp-radio/wifi`.
+esp32 = [
+    "esp-hal/esp32",
+    "esp-rtos/esp32",
+    "esp-radio/esp32",
+    "esp-storage/esp32",
+    "esp-alloc/esp32",
+    "esp-bootloader-esp-idf/esp32",
+]
+esp32c2 = [
+    "esp-hal/esp32c2",
+    "esp-rtos/esp32c2",
+    "esp-radio/esp32c2",
+    "esp-storage/esp32c2",
+    "esp-alloc/esp32c2",
+    "esp-bootloader-esp-idf/esp32c2",
+]
+esp32c3 = [
+    "esp-hal/esp32c3",
+    "esp-rtos/esp32c3",
+    "esp-radio/esp32c3",
+    "esp-storage/esp32c3",
+    "esp-alloc/esp32c3",
+    "esp-bootloader-esp-idf/esp32c3",
+]
+esp32c5 = [
+    "esp-hal/esp32c5",
+    "esp-rtos/esp32c5",
+    "esp-radio/esp32c5",
+    "esp-storage/esp32c5",
+    "esp-alloc/esp32c5",
+    "esp-bootloader-esp-idf/esp32c5",
+]
 esp32c6 = [
     "esp-hal/esp32c6",
     "esp-rtos/esp32c6",
     "esp-radio/esp32c6",
     "esp-storage/esp32c6",
+    "esp-alloc/esp32c6",
     "esp-bootloader-esp-idf/esp32c6",
+]
+esp32c61 = [
+    "esp-hal/esp32c61",
+    "esp-rtos/esp32c61",
+    "esp-radio/esp32c61",
+    "esp-storage/esp32c61",
+    "esp-alloc/esp32c61",
+    "esp-bootloader-esp-idf/esp32c61",
+]
+esp32s2 = [
+    "esp-hal/esp32s2",
+    "esp-rtos/esp32s2",
+    "esp-radio/esp32s2",
+    "esp-storage/esp32s2",
+    "esp-alloc/esp32s2",
+    "esp-bootloader-esp-idf/esp32s2",
+]
+esp32s3 = [
+    "esp-hal/esp32s3",
+    "esp-rtos/esp32s3",
+    "esp-radio/esp32s3",
+    "esp-storage/esp32s3",
+    "esp-alloc/esp32s3",
+    "esp-bootloader-esp-idf/esp32s3",
+]
+# `esp-radio`'s Wi-Fi driver for the ESP32-S31 needs a recent
+# `esp-metadata-generated` (>= 0.5.2) in the dependency graph.
+esp32s31 = [
+    "esp-hal/esp32s31",
+    "esp-rtos/esp32s31",
+    "esp-radio/esp32s31",
+    "esp-storage/esp32s31",
+    "esp-alloc/esp32s31",
+    "esp-bootloader-esp-idf/esp32s31",
 ]
 
 [package.metadata.docs.rs]

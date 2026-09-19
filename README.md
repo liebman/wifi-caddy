@@ -18,9 +18,12 @@ persistence, and dual STA+AP control — all generated at compile time.
 
 ## Supported hardware
 
-ESP32, ESP32-S3, ESP32-C6 — any target supported by
+Every Wi-Fi capable chip supported by
 [esp-hal](https://github.com/esp-rs/esp-hal) and
-[esp-radio](https://github.com/esp-rs/esp-radio).
+[esp-radio](https://github.com/esp-rs/esp-radio): ESP32, ESP32-C2, ESP32-C3,
+ESP32-C5, ESP32-C6, ESP32-C61, ESP32-S2, ESP32-S3 and ESP32-S31. The chip is
+selected with a feature on `esp-wifi-caddy` — see
+[Chip selection](esp-wifi-caddy/README.md#chip-selection).
 
 ## Quick look
 
@@ -95,12 +98,20 @@ DNS on the AP stack.
 
 ## Getting started
 
-1. **Install the ESP Rust toolchain** via [espup](https://github.com/esp-rs/espup):
+1. **Install the ESP Rust toolchain** via [espup](https://github.com/esp-rs/espup).
+   This repo is built with Espressif's **1.97.0.0** toolchain (rustc 1.97), which
+   is also the MSRV of the esp-* crates. `espup install` installs the latest
+   release; `espup update` upgrades an existing install:
 
    ```bash
    cargo install espup
-   espup install
+   espup install    # or: espup update
    ```
+
+   Cargo picks up the `esp` toolchain through a local `rust-toolchain.toml`
+   (`channel = "esp"`, gitignored so each checkout can choose); the Espressif
+   toolchain ships the `rust-src` component required by the `-Zbuild-std` Xtensa
+   builds.
 
 2. **Install espflash** for flashing and monitoring:
 
@@ -114,10 +125,16 @@ DNS on the AP stack.
 
    ```toml
    [dependencies]
-   esp-wifi-caddy    = "0.1.0"
+   esp-wifi-caddy    = { version = "0.1.0", features = ["esp32s3"] }
    enumset           = "1.1"
    esp-storage       = "0.10"
    ```
+
+   The chip feature (`esp32s3` above, or any of `esp32`, `esp32c2`, `esp32c3`,
+   `esp32c5`, `esp32c6`, `esp32c61`, `esp32s2`, `esp32s3`, `esp32s31`) is
+   forwarded to `esp-radio` and the rest of the `esp-*` stack, so `esp-radio`
+   needs no entry of its own. See
+   [Chip selection](esp-wifi-caddy/README.md#chip-selection).
 
    `esp-wifi-caddy` re-exports `wifi-caddy`, the `WifiCaddyConfig` derive macro,
    and the crates that macro-generated code references, so `wifi-caddy` and

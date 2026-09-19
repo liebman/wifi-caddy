@@ -2603,7 +2603,6 @@ dependencies = [
  "esp-bootloader-esp-idf",
  "esp-hal",
  "esp-println",
- "esp-radio",
  "esp-rtos",
  "esp-storage",
  "esp-wifi-caddy",

@@ -3,7 +3,7 @@ name = "wifi-example"
 version = "0.1.0"
 edition = "2024"
 license = "MIT OR Apache-2.0"
-rust-version = "1.87"
+rust-version = "1.97"
 description = "Minimal example: esp-wifi-caddy + wifi-caddy-proc, WiFi connect with example config"
 publish = false
 
@@ -32,7 +32,6 @@ defmt = [
     "esp-alloc/defmt",
     "esp-backtrace/defmt",
     "esp-rtos/defmt",
-    "esp-radio/defmt",
     "esp-println/defmt-espflash",
     "esp-storage/defmt",
     "esp-wifi-caddy/defmt",
@@ -41,34 +40,36 @@ log = [
     "dep:log",
     "esp-backtrace/println",
     "esp-rtos/log-04",
-    "esp-radio/log-04",
     "esp-println/log-04",
     "esp-wifi-caddy/log",
 ]
+# The chip features below select the target chip. `esp-wifi-caddy/<chip>` is
+# what forwards the chip to `esp-radio` (and the rest of the `esp-*` stack), so
+# this example does not need an `esp-radio` dependency of its own.
 esp32s3 = [
+    "esp-wifi-caddy/esp32s3",
     "esp-hal/esp32s3",
     "esp-backtrace/esp32s3",
     "esp-println/esp32s3",
     "esp-rtos/esp32s3",
-    "esp-radio/esp32s3",
     "esp-bootloader-esp-idf/esp32s3",
     "esp-storage/esp32s3",
 ]
 esp32 = [
+    "esp-wifi-caddy/esp32",
     "esp-hal/esp32",
     "esp-backtrace/esp32",
     "esp-println/esp32",
     "esp-rtos/esp32",
-    "esp-radio/esp32",
     "esp-bootloader-esp-idf/esp32",
     "esp-storage/esp32",
 ]
 esp32c6 = [
+    "esp-wifi-caddy/esp32c6",
     "esp-hal/esp32c6",
     "esp-backtrace/esp32c6",
     "esp-println/esp32c6",
     "esp-rtos/esp32c6",
-    "esp-radio/esp32c6",
     "esp-bootloader-esp-idf/esp32c6",
     "esp-storage/esp32c6",
 ]
@@ -93,7 +94,6 @@ esp-rtos = { version = "0.4.0", features = [
     "esp-alloc",
     "esp-radio",
 ] }
-esp-radio = { version = "=1.0.0-beta.1", features = ["wifi"] }
 esp-backtrace = { version = "0.20.0", default-features = false, features = [
     "panic-handler",
 ] }

@@ -6,11 +6,13 @@ config UI, config change notifications, and boot-button AP toggle.
 
 This repo uses **path** dependencies to the sibling crates. The example depends
 only on **esp-wifi-caddy** (plus `enumset`, which the `WifiCaddyConfig` derive
-relies on) and on the `esp-hal` / `embassy-*` crates its own application code
-uses. In your own project, use crates.io versions instead, for example:
+relies on) and on the `esp-hal` / `esp-rtos` / `embassy-*` crates its own
+application code uses. The target chip is selected with an `esp-wifi-caddy`
+feature, which forwards it to `esp-radio` — so `esp-radio` is not listed as a
+dependency here. In your own project, use crates.io versions instead, for example:
 
 ```toml
-esp-wifi-caddy = "0.1.0"
+esp-wifi-caddy = { version = "0.1.0", features = ["esp32s3"] }
 enumset        = "1.1"
 ```
 
@@ -24,7 +26,14 @@ or `wifi-caddy-proc` entry is needed. See the
 
 - **esp32s3** (default with `cargo build-s3`): Build for ESP32-S3.
 - **esp32**, **esp32c6**: Alternate targets (use `cargo build-32` / `cargo build-c6`).
-- **log** (default): `log` crate logging.
+
+Each chip feature is forwarded to `esp-wifi-caddy`, which passes it on to
+`esp-radio` and the rest of the `esp-*` stack. `esp-wifi-caddy` supports
+`esp32`, `esp32c2`, `esp32c3`, `esp32c5`, `esp32c6`, `esp32c61`, `esp32s2`,
+`esp32s3` and `esp32s31`; this example only wires up aliases for the three it
+builds.
+
+- **log** (default): `log` crate logging (also enables esp-radio's `log-04`).
 - **defmt**: `defmt` logging (mutually exclusive with `log`).
 
 ## Config
@@ -52,12 +61,15 @@ cargo build-32        # build
 cargo run-32          # flash and monitor
 ```
 
-Use the **esp** toolchain (`rust-toolchain.toml` sets `channel = "esp"`).
-Install via [espup](https://github.com/esp-rs/espup):
+Use the **esp** toolchain — keep a local `rust-toolchain.toml` with
+`channel = "esp"` and the `rust-src` component (required by `-Zbuild-std`) so
+cargo picks it up; the file is gitignored, so each checkout needs its own. The
+example is built with Espressif's **1.97.0.0** toolchain (rustc 1.97). Install
+via [espup](https://github.com/esp-rs/espup):
 
 ```bash
 cargo install espup
-espup install
+espup install    # or: espup update
 ```
 
 ## How it works
