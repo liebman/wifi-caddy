@@ -45,6 +45,42 @@ pub use wifi_caddy::run_http_config_loop;
 pub use wifi_caddy::run_http_debug_loop;
 pub use wifi_caddy::{ConfigServer, ConfigType};
 
+// ---------------------------------------------------------------------------
+// Facade re-exports
+// ---------------------------------------------------------------------------
+//
+// `#[derive(WifiCaddyConfig)]` expands into code that names its runtime
+// dependencies by crate path. When the config struct lives in a crate that
+// depends on esp-wifi-caddy (instead of on wifi-caddy directly) the derive
+// routes those paths through this crate, so everything it needs is re-exported
+// here and `esp-wifi-caddy` stays the only dependency a config user needs.
+//
+// The whole core crate is re-exported as `wifi_caddy`, which is where the
+// generated `wifi_caddy::config_storage::…` paths resolve.
+pub use wifi_caddy;
+pub use wifi_caddy_proc::WifiCaddyConfig;
+
+#[doc(hidden)]
+pub use embassy_sync;
+#[doc(hidden)]
+pub use serde;
+#[doc(hidden)]
+pub use serde_json_core;
+#[doc(hidden)]
+pub use static_cell;
+
+// Convenience re-exports for application code (already dependencies of this crate).
+/// Executor used by tasks started through [`wifi_init!`].
+pub use embassy_executor;
+pub use embassy_futures;
+pub use embassy_net;
+pub use embassy_time;
+pub use heapless;
+#[cfg(feature = "defmt")]
+pub use defmt;
+#[cfg(feature = "log")]
+pub use log;
+
 #[doc(hidden)]
 pub use partition::{mount_and_load, mount_and_load_by_partition};
 #[doc(hidden)]
@@ -60,7 +96,8 @@ pub use wifi_caddy::Error;
 #[macro_export]
 macro_rules! mk_static {
     ($t:ty,$val:expr) => {{
-        static STATIC_CELL: static_cell::StaticCell<$t> = static_cell::StaticCell::new();
+        static STATIC_CELL: $crate::static_cell::StaticCell<$t> =
+            $crate::static_cell::StaticCell::new();
         #[deny(unused_attributes)]
         let x = STATIC_CELL.uninit().write($val);
         x
@@ -536,18 +573,18 @@ macro_rules! _wifi_init_body {
         let (config_rx, notify_sender) =
             <$Config as $crate::config_storage::ConfigServer>::init_notify();
         let config_mutex = $crate::mk_static!(
-            embassy_sync::mutex::Mutex<
-                embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex,
+            $crate::embassy_sync::mutex::Mutex<
+                $crate::embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex,
                 $Config,
             >,
-            embassy_sync::mutex::Mutex::new($config)
+            $crate::embassy_sync::mutex::Mutex::new($config)
         );
         let io_mutex = $crate::mk_static!(
-            embassy_sync::mutex::Mutex<
-                embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex,
+            $crate::embassy_sync::mutex::Mutex<
+                $crate::embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex,
                 $crate::FlashConfigStorage<'static, $crate::Mounted>,
             >,
-            embassy_sync::mutex::Mutex::new($storage)
+            $crate::embassy_sync::mutex::Mutex::new($storage)
         );
         $crate::wifi_init_inner::<$Config, _, _>(
             $spawner,
@@ -574,16 +611,16 @@ macro_rules! _wifi_init_debug_worker {
     ($Config:ty, $spawner:expr, $sta_stack:expr, $config:expr, $io:expr, $notify:expr) => {
         #[embassy_executor::task]
         async fn _config_http_worker_debug(
-            stack: embassy_net::Stack<'static>,
-            config: &'static embassy_sync::mutex::Mutex<
-                embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex,
+            stack: $crate::embassy_net::Stack<'static>,
+            config: &'static $crate::embassy_sync::mutex::Mutex<
+                $crate::embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex,
                 $Config,
             >,
-            io: &'static embassy_sync::mutex::Mutex<
-                embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex,
+            io: &'static $crate::embassy_sync::mutex::Mutex<
+                $crate::embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex,
                 $crate::FlashConfigStorage<'static, $crate::Mounted>,
             >,
-            notify: embassy_sync::channel::DynamicSender<
+            notify: $crate::embassy_sync::channel::DynamicSender<
                 'static,
                 <$Config as $crate::config_storage::ConfigApi>::ChangedSet,
             >,
@@ -619,16 +656,16 @@ macro_rules! _wifi_init_workers {
     ($Config:ty) => {
         #[embassy_executor::task]
         async fn _config_http_worker(
-            stack: embassy_net::Stack<'static>,
-            config: &'static embassy_sync::mutex::Mutex<
-                embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex,
+            stack: $crate::embassy_net::Stack<'static>,
+            config: &'static $crate::embassy_sync::mutex::Mutex<
+                $crate::embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex,
                 $Config,
             >,
-            io: &'static embassy_sync::mutex::Mutex<
-                embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex,
+            io: &'static $crate::embassy_sync::mutex::Mutex<
+                $crate::embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex,
                 $crate::FlashConfigStorage<'static, $crate::Mounted>,
             >,
-            notify: embassy_sync::channel::DynamicSender<
+            notify: $crate::embassy_sync::channel::DynamicSender<
                 'static,
                 <$Config as $crate::config_storage::ConfigApi>::ChangedSet,
             >,
@@ -641,18 +678,18 @@ macro_rules! _wifi_init_workers {
         }
 
         fn _spawn_config_http_workers(
-            s: embassy_executor::Spawner,
-            ap_stack: embassy_net::Stack<'static>,
-            _sta_stack: embassy_net::Stack<'static>,
-            config: &'static embassy_sync::mutex::Mutex<
-                embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex,
+            s: $crate::embassy_executor::Spawner,
+            ap_stack: $crate::embassy_net::Stack<'static>,
+            _sta_stack: $crate::embassy_net::Stack<'static>,
+            config: &'static $crate::embassy_sync::mutex::Mutex<
+                $crate::embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex,
                 $Config,
             >,
-            io: &'static embassy_sync::mutex::Mutex<
-                embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex,
+            io: &'static $crate::embassy_sync::mutex::Mutex<
+                $crate::embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex,
                 $crate::FlashConfigStorage<'static, $crate::Mounted>,
             >,
-            notify: embassy_sync::channel::DynamicSender<
+            notify: $crate::embassy_sync::channel::DynamicSender<
                 'static,
                 <$Config as $crate::config_storage::ConfigApi>::ChangedSet,
             >,

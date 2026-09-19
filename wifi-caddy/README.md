@@ -15,17 +15,18 @@ and platform-specific runtime crates like `esp-wifi-caddy`:
 
 ## Usage
 
-Add `wifi-caddy` alongside `wifi-caddy-proc` in your embedded project.
-A platform crate (e.g. `esp-wifi-caddy`) provides the storage backend and
-WiFi initialization.
+A platform crate (e.g. `esp-wifi-caddy`) provides the storage backend, the WiFi
+initialization, and the derive macro, so on ESP32 you normally depend only on it:
 
 ```toml
 [dependencies]
-wifi-caddy        = "0.1.0"
-wifi-caddy-proc   = "0.1.0"
-# Platform-specific:
-esp-wifi-caddy    = "0.1.0"
+esp-wifi-caddy = "0.1.0"
+enumset        = "1.1"   # required by the generated `EnumSet<ConfigChange>`
 ```
+
+This crate stays platform-agnostic: for a crate without `esp-wifi-caddy`,
+depend on `wifi-caddy` and `wifi-caddy-proc` directly. The derive macro picks the
+matching crate paths for whichever of the two you declared.
 
 ## Features
 

@@ -114,13 +114,16 @@ DNS on the AP stack.
 
    ```toml
    [dependencies]
-   wifi-caddy        = "0.1.0"
-   wifi-caddy-proc   = "0.1.0"
    esp-wifi-caddy    = "0.1.0"
-   serde             = { version = "1", default-features = false, features = ["derive", "alloc"] }
-   serde-json-core   = "0.6"
+   enumset           = "1.1"
    esp-storage       = "0.10"
    ```
+
+   `esp-wifi-caddy` re-exports `wifi-caddy`, the `WifiCaddyConfig` derive macro,
+   and the crates that macro-generated code references, so `wifi-caddy` and
+   `wifi-caddy-proc` need no entries of their own. `enumset` is required because
+   the `EnumSetType` derive resolves its own crate by name; `serde_json_core` is
+   available as `esp_wifi_caddy::serde_json_core` for direct JSON access.
 
 4. **Define your config struct** with `#[derive(WifiCaddyConfig)]` and the
    field/struct attributes you need. See the

@@ -42,6 +42,15 @@ cargo-args = ["-Z", "build-std=alloc,core"]
 [dependencies]
 wifi-caddy = { version = "0.1.0", path = "../wifi-caddy" }
 
+# The derive macro and the crates its generated code names are re-exported from
+# this crate, so a config user only needs `esp-wifi-caddy` as a dependency.
+wifi-caddy-proc = { version = "0.1.0", path = "../wifi-caddy-proc" }
+serde = { version = "1.0", default-features = false, features = [
+    "derive",
+    "alloc",
+] }
+serde-json-core = "0.6"
+
 embassy-executor = { version = "0.10.0" }
 embassy-time = { version = "0.5.0" }
 embassy-sync = { version = "0.8" }

@@ -21,11 +21,11 @@ use esp_hal::gpio::{InputConfig, Pull};
 use esp_hal::timer::timg::TimerGroup;
 use esp_println as _;
 use esp_storage::FlashStorage;
-use esp_wifi_caddy::{WifiApSsidPrefix, WifiPass, WifiSsid};
+use esp_wifi_caddy::{
+    ConfigHandle, WifiApSsidPrefix, WifiCaddyConfig, WifiPass, WifiSsid,
+};
 #[cfg(not(feature = "defmt"))]
 use log::info;
-use wifi_caddy::ConfigHandle;
-use wifi_caddy_proc::WifiCaddyConfig;
 
 esp_bootloader_esp_idf::esp_app_desc!();
 

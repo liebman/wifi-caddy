@@ -76,14 +76,9 @@ debug-server = ["esp-wifi-caddy/debug-server"]
 
 [dependencies]
 esp-wifi-caddy = { path = "../../esp-wifi-caddy" }
-wifi-caddy = { path = "../../wifi-caddy" }
-wifi-caddy-proc = { path = "../../wifi-caddy-proc" }
-
-serde = { version = "1.0", default-features = false, features = [
-    "derive",
-    "alloc",
-] }
-serde-json-core = "0.6"
+# Required by the code generated from `#[derive(WifiCaddyConfig)]`: the enumset
+# derive resolves its own crate by name.
+enumset = { version = "1.1.10" }
 
 esp-storage = { version = "0.10.0" }
 
@@ -105,7 +100,6 @@ esp-backtrace = { version = "0.20.0", default-features = false, features = [
 esp-bootloader-esp-idf = { version = "0.6.0", default-features = false }
 embassy-executor = { version = "0.10.0" }
 embassy-time = { version = "0.5.0" }
-embassy-sync = { version = "0.8" }
 embassy-futures = { version = "0.1.2" }
 embassy-net = { version = "0.9.0", features = [
     "dhcpv4",
@@ -115,8 +109,6 @@ embassy-net = { version = "0.9.0", features = [
     "dns",
 ] }
 defmt = { version = "1.0.1", optional = true }
-static_cell = { version = "2.1.1", default-features = false }
-enumset = { version = "1.1.10" }
 esp-println = "0.18.0"
 log = { version = "0.4", optional = true }
 

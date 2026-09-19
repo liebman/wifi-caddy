@@ -43,9 +43,36 @@ HTTP portal for runtime configuration.
 - **Configuration:** All configuration is via `WifiCaddyCommand`: send `StaUp(ssid, pass)` to
   enable STA with credentials, `APUp(prefix)` to enable the AP (full SSID = prefix + MAC), and
   `APDown` to disable the AP. The caddy starts with empty state until you send commands.
-- **Config storage:** In-tree config storage traits and flash-backed storage,
-  plus captive HTTP portal (AP DHCP, HTTP server, config UI). Use with
-  **wifi-caddy-proc** to derive config structs.
+- **Config storage:** Flash-backed config storage traits and captive HTTP portal
+  (AP DHCP, HTTP server, config UI). Config structs are derived with
+  `#[derive(WifiCaddyConfig)]`, re-exported from this crate.
+
+## Single-dependency setup
+
+This crate is a facade: `#[derive(WifiCaddyConfig)]`, the config traits, the config
+page and `wifi_init!` are all reachable through it, and it re-exports the crates
+that macro-generated code references. An ESP32 app therefore needs just:
+
+```toml
+[dependencies]
+esp-wifi-caddy = "0.1.0"
+enumset        = "1.1"   # the generated `EnumSet<ConfigChange>` derives `EnumSetType`
+```
+
+`enumset` cannot be re-exported because `enumset_derive` names `::enumset`
+directly. Everything else — `wifi-caddy`, `wifi-caddy-proc`, `serde`,
+`serde-json-core`, `embassy-sync`, `static_cell` — is re-exported here and named
+through it by the generated code:
+
+```rust,ignore
+use esp_wifi_caddy::{ConfigHandle, WifiCaddyConfig, WifiSsid, WifiPass, WifiApSsidPrefix};
+use esp_wifi_caddy::WifiCaddyCommand; // StaUp(ssid, pass) / APUp(prefix) / APDown
+```
+
+Rust code that depends on `wifi-caddy` directly (no `esp-wifi-caddy`) keeps the
+historical `wifi_caddy::…` paths in generated code; see the
+[wifi-caddy-proc README](../wifi-caddy-proc/README.md) for the resolution rules
+and the `#[config_crate(...)]` override.
 
 ## Boot flow (with config + proc macro)
 
@@ -63,21 +90,18 @@ HTTP portal for runtime configuration.
 4. Use `wifi_stacks.sta` and `wifi_stacks.ap` as the `embassy_net::Stack` for your
    network tasks.
 
-## Quick integration (with config + wifi-caddy-proc)
+## Quick integration (with config + WifiCaddyConfig)
 
 This is the recommended path for most applications.
 
 Your `Cargo.toml` needs these dependencies (beyond the usual `esp-hal` / `esp-rtos` /
-`esp-radio` / `embassy-*` stack). The proc macro generates code that references them
-directly:
+`esp-radio` / `embassy-*` stack). The derive routes the code it generates through
+this crate, so the rest of the config stack comes along with it:
 
 ```toml
 [dependencies]
-wifi-caddy        = "0.1.0"
-wifi-caddy-proc   = "0.1.0"
 esp-wifi-caddy    = "0.1.0"
-serde             = { version = "1.0", default-features = false, features = ["derive", "alloc"] }
-serde-json-core   = "0.6"
+enumset           = "1.1"
 esp-storage       = "0.10.0"
 ```
 
@@ -85,7 +109,7 @@ See [wifi-example/Cargo.toml](../examples/wifi-example/Cargo.toml) for a
 complete working example.
 
 ```rust,ignore
-use wifi_caddy_proc::WifiCaddyConfig;
+use esp_wifi_caddy::WifiCaddyConfig;
 
 #[derive(Clone, Debug, WifiCaddyConfig)]
 #[config_server]
@@ -213,6 +237,16 @@ attributes (`#[config_store]`, `#[config_form]`, `#[config_server]`, `#[config_n
 | `WifiCommandSender` | Channel sender for `WifiCaddyCommand` |
 | `WifiCaddyCommand` | `StaUp(ssid, pass)`, `APUp(prefix)`, `APDown` |
 | `mk_static!` | Helper macro to create a `&'static T` from a value |
+
+### Config stack (re-exported through this crate)
+
+| Item | Description |
+|------|-------------|
+| `WifiCaddyConfig` | The `#[derive(WifiCaddyConfig)]` derive macro (`wifi-caddy-proc`) |
+| `wifi_caddy` | The platform-agnostic core crate, re-exported as a module |
+| `ConfigHandle`, `ConfigStorageParams`, `config_storage`, `ConfigServer`, `ConfigType`, `Error` | Core config types |
+| `embassy_executor`, `embassy_net`, `embassy_sync`, `embassy_time`, `embassy_futures`, `static_cell`, `heapless` | Dependency re-exports (doc-hidden where they exist only for generated code) |
+| `defmt` / `log` | Re-exported when the matching feature is enabled |
 
 ### Generated types (from `#[derive(WifiCaddyConfig)]`)
 

@@ -1242,8 +1242,11 @@ dependencies = [
  "heapless 0.9.3",
  "log",
  "sequential-storage",
+ "serde",
+ "serde-json-core",
  "static_cell",
  "wifi-caddy",
+ "wifi-caddy-proc",
 ]
 
 [[package]]
@@ -2579,6 +2582,7 @@ dependencies = [
 name = "wifi-caddy-proc"
 version = "0.1.0"
 dependencies = [
+ "proc-macro-crate",
  "proc-macro2",
  "quote",
  "syn 2.0.119",
@@ -2592,7 +2596,6 @@ dependencies = [
  "embassy-executor",
  "embassy-futures",
  "embassy-net",
- "embassy-sync 0.8.0",
  "embassy-time",
  "enumset",
  "esp-alloc",
@@ -2605,11 +2608,6 @@ dependencies = [
  "esp-storage",
  "esp-wifi-caddy",
  "log",
- "serde",
- "serde-json-core",
- "static_cell",
- "wifi-caddy",
- "wifi-caddy-proc",
 ]
 
 [[package]]

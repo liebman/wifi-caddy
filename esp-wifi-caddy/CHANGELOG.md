@@ -9,6 +9,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased] - ReleaseDate
 
+### Added
+
+- **Facade re-exports:** the crate now re-exports the `WifiCaddyConfig` derive, the
+  `wifi-caddy` core crate (as `wifi_caddy`), `serde`, `serde_json_core`,
+  `embassy_sync`, `static_cell`, plus `embassy_executor` / `embassy_net` /
+  `embassy_time` / `embassy_futures` / `heapless` / `defmt` / `log` conveniences.
+  Macro-generated code is routed through this crate, so an ESP32 app no longer needs
+  `wifi-caddy`, `wifi-caddy-proc`, `serde`, `serde-json-core`, `embassy-sync` or
+  `static_cell` entries — `enumset` stays required because `enumset_derive` names
+  `::enumset` directly.
+- `wifi_init!` / `mk_static!` expansions now reach `embassy_sync`, `embassy_net`,
+  `embassy_executor` and `static_cell` through `$crate::` paths instead of
+  injecting those bare crate names into application code.
+
 ### Changed
 
 - **Breaking:** `WifiCaddyCommand` uses `heapless::String` types (`WifiSsid`, `WifiPass`, `WifiApSsidPrefix`) instead of `alloc::string::String`. ([#4], closes [#3])

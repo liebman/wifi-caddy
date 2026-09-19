@@ -4,14 +4,21 @@ Minimal example: connect to WiFi using **esp-wifi-caddy** and
 **wifi-caddy-proc** with flash-backed config persistence. Demonstrates the
 config UI, config change notifications, and boot-button AP toggle.
 
-This repo uses **path** dependencies to the sibling crates. In your own project,
-use crates.io versions instead, for example:
+This repo uses **path** dependencies to the sibling crates. The example depends
+only on **esp-wifi-caddy** (plus `enumset`, which the `WifiCaddyConfig` derive
+relies on) and on the `esp-hal` / `embassy-*` crates its own application code
+uses. In your own project, use crates.io versions instead, for example:
 
 ```toml
-wifi-caddy        = "0.1.0"
-wifi-caddy-proc   = "0.1.0"
-esp-wifi-caddy    = "0.1.0"
+esp-wifi-caddy = "0.1.0"
+enumset        = "1.1"
 ```
+
+`#[derive(WifiCaddyConfig)]`, the config storage traits, the config page and
+`wifi_init!` all come from `esp-wifi-caddy`: it re-exports the platform-agnostic
+core crate and the crates that the generated code references, so no `wifi-caddy`
+or `wifi-caddy-proc` entry is needed. See the
+[esp-wifi-caddy README](../../esp-wifi-caddy/README.md) for the full list.
 
 ## Features
 
@@ -55,9 +62,9 @@ espup install
 
 ## How it works
 
-1. `AppConfig::init_wifi(...)` initializes WiFi, mounts
-   flash config storage from the `config` partition, loads saved config, and
-   starts the HTTP config UI on the AP stack.
+1. `esp_wifi_caddy::wifi_init!(AppConfig, spawner, peripherals.WIFI, flash, "config")`
+   initializes WiFi, mounts flash config storage from the `config` partition,
+   loads saved config, and starts the HTTP config UI on the AP stack.
 2. `config_updated_task` subscribes to config change notifications — when WiFi
    credentials change it sends `StaUp` to the WiFi manager; when example fields
    change it logs the new values.

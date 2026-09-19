@@ -19,6 +19,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Crate-path resolution for generated code: the derive reads the deriving crate's
+  manifest (`proc-macro-crate`) and emits `wifi_caddy::…` paths for a direct
+  `wifi-caddy` dependency, or facade-rooted paths (`::esp_wifi_caddy::wifi_caddy::…`)
+  for an `esp-wifi-caddy` dependency, so a config user no longer needs
+  `wifi-caddy`, `serde`, `serde-json-core`, `embassy-sync` or `static_cell` entries.
+  Renamed dependencies are resolved by name; if neither crate is found the historical
+  `wifi_caddy::…` paths are emitted.
+- `#[config_crate(...)]` struct attribute to override the detected crate root
+  (`core`, a crate name, or an arbitrary path such as `"crate"`).
 - Field attributes `prim_type` and `save_as` for custom type support (type aliases, newtypes). ([#4])
 - Compile-time UI tests via `trybuild`. ([#4])
 
