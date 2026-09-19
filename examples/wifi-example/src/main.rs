@@ -112,7 +112,14 @@ async fn main(spawner: Spawner) {
     esp_println::logger::init_logger_from_env();
     let peripherals = esp_hal::init(esp_hal::Config::default());
 
+    // ESP32-S2 has the least usable DRAM of the supported chips, so it keeps both
+    // heaps in the (larger) reclaimed region instead of the second DRAM heap.
+    #[cfg(feature = "esp32s2")]
+    esp_alloc::heap_allocator!(#[esp_hal::ram(reclaimed)] size: 96 * 1024);
+    #[cfg(not(feature = "esp32s2"))]
     esp_alloc::heap_allocator!(#[esp_hal::ram(reclaimed)] size: 64 * 1024);
+
+    #[cfg(not(feature = "esp32s2"))]
     esp_alloc::heap_allocator!(size: 16 * 1024);
 
     let timg0 = TimerGroup::new(peripherals.TIMG0);

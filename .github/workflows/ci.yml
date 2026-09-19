@@ -23,7 +23,7 @@ jobs:
       - name: Install RISC-V toolchain
         uses: dtolnay/rust-toolchain@v1
         with:
-          target: riscv32imac-unknown-none-elf
+          target: riscv32imc-unknown-none-elf,riscv32imac-unknown-none-elf,riscv32imafc-unknown-none-elf
           # Rust 1.97 matches the esp toolchain used for the Xtensa targets and
           # satisfies the crates' MSRV.
           toolchain: "1.97"
@@ -50,34 +50,97 @@ jobs:
         run: cargo test
         working-directory: wifi-caddy-proc
 
-      - name: Check esp-wifi-caddy
-        run: cargo check --target riscv32imac-unknown-none-elf --features esp32c6
+      # Compile-only coverage for every Wi-Fi capable RISC-V chip. esp32c61 and
+      # esp32s31 are kept here even though the example cannot link for them yet:
+      # the crate itself compiles for both (build-example builds esp32, esp32s3
+      # and the other RISC-V chips end to end; esp32s2 is skipped everywhere, see
+      # the build-example matrix).
+      - name: Check esp-wifi-caddy (all RISC-V chips)
         working-directory: esp-wifi-caddy
+        run: |
+          set -e
+          check() {
+            echo "::group::esp-wifi-caddy --features $1 ($2)"
+            cargo check --target "$2" --features "$1"
+            echo "::endgroup::"
+          }
+          check esp32c2  riscv32imc-unknown-none-elf
+          check esp32c3  riscv32imc-unknown-none-elf
+          check esp32c5  riscv32imac-unknown-none-elf
+          check esp32c6  riscv32imac-unknown-none-elf
+          check esp32c61 riscv32imac-unknown-none-elf
+          check esp32s31 riscv32imafc-unknown-none-elf
 
   build-example:
     name: Build Example (${{ matrix.target }}, ${{ matrix.features }})
     runs-on: ubuntu-latest
+    # When the commented-out esp32s2 / esp32c61 / esp32s31 entries in the matrix
+    # are re-enabled they should carry `experimental: true`, together with:
+    # continue-on-error: ${{ matrix.experimental == true }}
     strategy:
       fail-fast: false
       matrix:
-        target: [esp32, esp32s3, esp32c6]
+        # Every Wi-Fi capable chip esp-wifi-caddy supports, except the three that
+        # do not link yet (commented out below and in the include list):
+        # esp32s2 (DRAM), esp32c61 and esp32s31 (upstream blobs/linker).
+        target:
+          [esp32, esp32s3, esp32c2, esp32c3, esp32c5, esp32c6]
         features: [log, defmt]
         include:
+          # Xtensa chips: the esp toolchain supplies the target, build-std the
+          # core/alloc crates.
           - target: esp32
             rust_target: xtensa-esp32-none-elf
             toolchain: +esp
             cargo_unstable: "-Zbuild-std=core,alloc"
             rustflags: "-D warnings -C link-arg=-nostartfiles -C link-arg=-Tlinkall.x"
+          # - target: esp32s2
+          #   rust_target: xtensa-esp32s2-none-elf
+          #   toolchain: +esp
+          #   cargo_unstable: "-Zbuild-std=core,alloc"
+          #   rustflags: "-D warnings -C link-arg=-nostartfiles -C link-arg=-Tlinkall.x"
+          #   # The demo's static buffers (WiFi blobs + heaps) exceed the ESP32-S2's
+          #   # DRAM (~152 KB after caches), leaving less than the 8 KB main stack
+          #   # esp-hal requires. Uncomment once the WiFi buffers are trimmed.
           - target: esp32s3
             rust_target: xtensa-esp32s3-none-elf
             toolchain: +esp
             cargo_unstable: "-Zbuild-std=core,alloc"
             rustflags: "-D warnings -C link-arg=-nostartfiles -C link-arg=-Tlinkall.x"
+          # RISC-V chips: core/alloc come from the rustup target installed above.
+          - target: esp32c2
+            rust_target: riscv32imc-unknown-none-elf
+            toolchain: ""
+            cargo_unstable: ""
+            rustflags: "-D warnings -C link-arg=-Tlinkall.x"
+          - target: esp32c3
+            rust_target: riscv32imc-unknown-none-elf
+            toolchain: ""
+            cargo_unstable: ""
+            rustflags: "-D warnings -C link-arg=-Tlinkall.x"
+          - target: esp32c5
+            rust_target: riscv32imac-unknown-none-elf
+            toolchain: ""
+            cargo_unstable: ""
+            rustflags: "-D warnings -C link-arg=-Tlinkall.x"
           - target: esp32c6
             rust_target: riscv32imac-unknown-none-elf
             toolchain: ""
             cargo_unstable: ""
             rustflags: "-D warnings -C link-arg=-Tlinkall.x"
+          # - target: esp32c61
+          #   rust_target: riscv32imac-unknown-none-elf
+          #   toolchain: ""
+          #   cargo_unstable: ""
+          #   rustflags: "-D warnings -C link-arg=-Tlinkall.x"
+          #   # esp-wifi-sys's C61/S31 blobs reference sections that rust-lld's
+          #   # --gc-sections drops, and with GC disabled they need ROM symbols the
+          #   # linker scripts do not provide. Uncomment when upstream links.
+          # - target: esp32s31
+          #   rust_target: riscv32imafc-unknown-none-elf
+          #   toolchain: ""
+          #   cargo_unstable: ""
+          #   rustflags: "-D warnings -C link-arg=-Tlinkall.x"
     steps:
       - uses: actions/checkout@v4
 
@@ -89,7 +152,7 @@ jobs:
       - name: Install RISC-V toolchain
         uses: dtolnay/rust-toolchain@v1
         with:
-          target: riscv32imac-unknown-none-elf
+          target: riscv32imc-unknown-none-elf,riscv32imac-unknown-none-elf,riscv32imafc-unknown-none-elf
           # Rust 1.97 matches the esp toolchain used for the Xtensa targets and
           # satisfies the crates' MSRV.
           toolchain: "1.97"

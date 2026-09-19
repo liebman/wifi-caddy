@@ -1,0 +1,14 @@
+# ESP32 (xtensa). Used through the `clippy-32` / `build-32` / `run-32` aliases:
+#
+#   cargo build-32
+#   (= cargo build --config .cargo/config-32.toml --release --features esp32)
+
+[build]
+target = "xtensa-esp32-none-elf"
+
+[target.xtensa-esp32-none-elf]
+runner = "espflash flash --chip esp32 --monitor"
+rustflags = [
+  "-C", "link-arg=-nostartfiles",
+  "-C", "link-arg=-Tlinkall.x",
+]

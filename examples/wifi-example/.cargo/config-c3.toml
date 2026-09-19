@@ -1,0 +1,14 @@
+# ESP32-C3 (riscv32imc). Used through the `clippy-c3` / `build-c3` / `run-c3`
+# aliases:
+#
+#   cargo build-c3
+#   (= cargo build --config .cargo/config-c3.toml --release --features esp32c3)
+
+[build]
+target = "riscv32imc-unknown-none-elf"
+
+[target.riscv32imc-unknown-none-elf]
+runner = "espflash flash --chip esp32c3 --monitor"
+rustflags = [
+  "-C", "link-arg=-Tlinkall.x",
+]

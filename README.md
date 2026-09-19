@@ -155,8 +155,9 @@ DNS on the AP stack.
    ```bash
    cd examples/wifi-example
    cargo run-s3          # ESP32-S3
-   cargo run-32          # ESP32
-   cargo run-c6          # ESP32-C6
+   # Every working chip has clippy/build/run aliases: -32, -s3, -c2, -c3, -c5,
+   # -c6 (see the example README for the target list and the chips still waiting
+   # on link fixes).
    ```
 
 For the full integration guide, API reference, and feature flags, see the

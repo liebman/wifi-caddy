@@ -309,13 +309,18 @@ dependency (and its chip feature) is not needed in your own `Cargo.toml`. The sa
 goes for `esp-radio`'s `log-04` / `defmt` features, which follow this crate's
 `log` / `defmt` features.
 
-The list covers every Wi-Fi capable chip `esp-radio` supports. `esp32h2` and
-`esp32p4` are deliberately not offered: those parts have no Wi-Fi driver, and this
-crate always enables `esp-radio/wifi`, which makes `esp-radio`'s build script
-abort for them. `esp32s31` additionally needs a recent `esp-metadata-generated`
-(>= 0.5.2) in the dependency graph for `esp-radio`'s Wi-Fi driver to be available,
-and an `esp` toolchain that ships the `xtensa-esp32s31-none-elf` target (the
-1.97.0.0 release does not include it yet).
+The list covers every Wi-Fi capable chip `esp-radio` supports — ESP32-S31 is
+RISC-V (`riscv32imafc-unknown-none-elf`), not Xtensa. `esp32h2` and `esp32p4` are
+deliberately not offered: those parts have no Wi-Fi driver, and this crate always
+enables `esp-radio/wifi`, which makes `esp-radio`'s build script abort for them.
+`esp32s31` additionally needs a recent `esp-metadata-generated` (>= 0.5.2) in the
+dependency graph for `esp-radio`'s Wi-Fi driver to be available.
+
+Every chip feature compiles for the target. A full application is still subject to
+each chip's link-time memory budget (ESP32-S2's DRAM is the tightest), and the
+`esp-wifi-sys` blobs for ESP32-C61 / ESP32-S31 currently do not link with
+`rust-lld`; see the
+[example's chip notes](../examples/wifi-example/README.md#chip-notes).
 
 ## Prerequisites
 

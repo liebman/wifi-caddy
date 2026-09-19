@@ -1,0 +1,14 @@
+# ESP32-C2 (riscv32imc). Used through the `clippy-c2` / `build-c2` / `run-c2`
+# aliases:
+#
+#   cargo build-c2
+#   (= cargo build --config .cargo/config-c2.toml --release --features esp32c2)
+
+[build]
+target = "riscv32imc-unknown-none-elf"
+
+[target.riscv32imc-unknown-none-elf]
+runner = "espflash flash --chip esp32c2 --monitor"
+rustflags = [
+  "-C", "link-arg=-Tlinkall.x",
+]

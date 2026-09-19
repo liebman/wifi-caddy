@@ -1,43 +1,80 @@
+# Aliases for every Wi-Fi capable chip esp-wifi-caddy supports. Each alias passes
+# a chip-specific config file (`.cargo/config-<chip>.toml`), which sets
+# `[build] target`, the espflash runner, the link flags and any chip-specific
+# `[env]` values (e.g. the ESP32-S2 data cache):
+#
+#   cargo build-s3
+#   => cargo build --config .cargo/config-s3.toml --release --features esp32s3
+#
+# Swap the `--features` value (e.g. `esp32c6,defmt`) to change the logging
+# backend. The aliases for the chips whose blobs do not link with rust-lld yet
+# (ESP32-C61, ESP32-S31) are commented out — see "Chip notes" in README.md.
+
 [alias]
-# esp32s3
-clippy-s3 = "clippy --release --target=xtensa-esp32s3-none-elf --features esp32s3"
-build-s3 = "build --release --target=xtensa-esp32s3-none-elf --features esp32s3"
-run-s3   = "run   --release --target=xtensa-esp32s3-none-elf --features esp32s3"
+# ESP32 (xtensa)
+clippy-32 = "clippy --config .cargo/config-32.toml --release --features esp32"
+build-32  = "build  --config .cargo/config-32.toml --release --features esp32"
+run-32    = "run    --config .cargo/config-32.toml --release --features esp32"
 
-# esp32
-clippy-32 = "clippy --release --target=xtensa-esp32-none-elf --features esp32"
-build-32 = "build --release --target=xtensa-esp32-none-elf --features esp32"
-run-32   = "run --release --target=xtensa-esp32-none-elf --features esp32"
+# ESP32-S2 (xtensa)
+# Commented out: the demo's WiFi blobs plus heaps leave less than the 8 KB main
+# stack esp-hal requires in the S2's DRAM. `.cargo/config-s2.toml` has the
+# data-cache override that frees enough DRAM to link (verified locally) — enable
+# both once that has been checked on hardware.
+# clippy-s2 = "clippy --config .cargo/config-s2.toml --release --features esp32s2"
+# build-s2  = "build  --config .cargo/config-s2.toml --release --features esp32s2"
+# run-s2    = "run    --config .cargo/config-s2.toml --release --features esp32s2"
 
-# esp32c6
-clippy-c6 = "clippy --release --target=riscv32imac-unknown-none-elf --features esp32c6"
-build-c6 = "build --release --target=riscv32imac-unknown-none-elf --features esp32c6"
-run-c6   = "run --release --target=riscv32imac-unknown-none-elf --features esp32c6"
+# ESP32-S3 (xtensa)
+clippy-s3 = "clippy --config .cargo/config-s3.toml --release --features esp32s3"
+build-s3  = "build  --config .cargo/config-s3.toml --release --features esp32s3"
+run-s3    = "run    --config .cargo/config-s3.toml --release --features esp32s3"
 
-[target.xtensa-esp32-none-elf]
-runner = "espflash flash --chip esp32 --monitor"
-rustflags = [
-  "-C", "link-arg=-nostartfiles",
-  "-C", "link-arg=-Tlinkall.x",
-]
+# ESP32-C2 (riscv32imc)
+clippy-c2 = "clippy --config .cargo/config-c2.toml --release --features esp32c2"
+build-c2  = "build  --config .cargo/config-c2.toml --release --features esp32c2"
+run-c2    = "run    --config .cargo/config-c2.toml --release --features esp32c2"
 
-[target.xtensa-esp32s3-none-elf]
-runner = "espflash flash --chip esp32s3 --monitor"
-rustflags = [
-  "-C", "link-arg=-nostartfiles",
-  "-C", "link-arg=-Tlinkall.x",
-]
+# ESP32-C3 (riscv32imc)
+clippy-c3 = "clippy --config .cargo/config-c3.toml --release --features esp32c3"
+build-c3  = "build  --config .cargo/config-c3.toml --release --features esp32c3"
+run-c3    = "run    --config .cargo/config-c3.toml --release --features esp32c3"
 
-[target.riscv32imac-unknown-none-elf]
-runner = "espflash flash --chip esp32c6 --monitor"
-rustflags = [
-  "-C", "link-arg=-Tlinkall.x",
-]
+# ESP32-C5 (riscv32imac)
+clippy-c5 = "clippy --config .cargo/config-c5.toml --release --features esp32c5"
+build-c5  = "build  --config .cargo/config-c5.toml --release --features esp32c5"
+run-c5    = "run    --config .cargo/config-c5.toml --release --features esp32c5"
+
+# ESP32-C6 (riscv32imac)
+clippy-c6 = "clippy --config .cargo/config-c6.toml --release --features esp32c6"
+build-c6  = "build  --config .cargo/config-c6.toml --release --features esp32c6"
+run-c6    = "run    --config .cargo/config-c6.toml --release --features esp32c6"
+
+# ESP32-C61 (riscv32imac)
+# Commented out: esp-wifi-sys's C61 blobs do not link with rust-lld yet
+# (--gc-sections drops sections they reference, and without GC they need ROM
+# symbols the linker scripts do not provide).
+# clippy-c61 = "clippy --config .cargo/config-c61.toml --release --features esp32c61"
+# build-c61  = "build  --config .cargo/config-c61.toml --release --features esp32c61"
+# run-c61    = "run    --config .cargo/config-c61.toml --release --features esp32c61"
+
+# ESP32-S31 (riscv32imafc)
+# Commented out: esp-wifi-sys's S31 blobs do not link with rust-lld yet, and the
+# chip is still marked experimental by esp-hal.
+# clippy-s31 = "clippy --config .cargo/config-s31.toml --release --features esp32s31"
+# build-s31  = "build  --config .cargo/config-s31.toml --release --features esp32s31"
+# run-s31    = "run    --config .cargo/config-s31.toml --release --features esp32s31"
+
+# ---------------------------------------------------------------------------
+# Shared configuration
+# ---------------------------------------------------------------------------
+# Target, runner and link flags live in the per-chip files
+# (`.cargo/config-<chip>.toml`). Values here apply to every chip.
 
 [unstable]
 build-std = ["alloc", "core"]
 
 [env]
-ESP_LOG = "esp_wifi_caddy=debug,wifi_caddy::portal=debug,edge_captive=debug,info"
-# ESP_LOG = "info"
+# ESP_LOG = "esp_wifi_caddy=debug,wifi_caddy::portal=debug,edge_captive=debug,info"
+ESP_LOG = "info"
 DEFMT_LOG = "info"

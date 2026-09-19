@@ -1,0 +1,14 @@
+# ESP32-C61 (riscv32imac). Used through the `clippy-c61` / `build-c61` / `run-c61`
+# aliases (commented out in config.toml — see "Chip notes" in README.md):
+#
+#   cargo build-c61
+#   (= cargo build --config .cargo/config-c61.toml --release --features esp32c61)
+
+[build]
+target = "riscv32imac-unknown-none-elf"
+
+[target.riscv32imac-unknown-none-elf]
+runner = "espflash flash --chip esp32c61 --monitor"
+rustflags = [
+  "-C", "link-arg=-Tlinkall.x",
+]

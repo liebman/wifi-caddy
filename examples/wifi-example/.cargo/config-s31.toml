@@ -1,0 +1,14 @@
+# ESP32-S31 (riscv32imafc). Used through the `clippy-s31` / `build-s31` / `run-s31`
+# aliases (commented out in config.toml — see "Chip notes" in README.md):
+#
+#   cargo build-s31
+#   (= cargo build --config .cargo/config-s31.toml --release --features esp32s31)
+
+[build]
+target = "riscv32imafc-unknown-none-elf"
+
+[target.riscv32imafc-unknown-none-elf]
+runner = "espflash flash --chip esp32s31 --monitor"
+rustflags = [
+  "-C", "link-arg=-Tlinkall.x",
+]
