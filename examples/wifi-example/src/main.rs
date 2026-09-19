@@ -1,7 +1,9 @@
 //! Minimal example: esp-wifi-caddy + config crates — connect to WiFi and print config changes.
 //!
 //! Config: WiFi credentials and example string/integer. Storage in flash (config partition).
-//! Boot button (GPIO 0): press toggles AP on/off and serves the HTTP config UI on AP.
+//! The AP (and with it the HTTP config UI) starts at boot when the config has no
+//! STA credentials, so a fresh device is reachable; the boot button (GPIO 0)
+//! toggles the AP off and on.
 
 #![no_std]
 #![no_main]
@@ -28,6 +30,9 @@ use esp_wifi_caddy::{
 use log::info;
 
 esp_bootloader_esp_idf::esp_app_desc!();
+
+/// AP SSID prefix; the full SSID is this prefix plus the AP MAC (12 hex chars).
+const AP_SSID_PREFIX: &str = "wifi-example-";
 
 /// App config: WiFi credentials and example string and integer.
 #[derive(Clone, Debug, Default, WifiCaddyConfig)]
@@ -139,7 +144,7 @@ async fn main(spawner: Spawner) {
     spawner.spawn(ip_address_task(wifi_stacks.sta).unwrap());
     info!("IP address task spawned (reports IP changes)");
 
-    {
+    let sta_configured = {
         let cfg = config.lock().await;
         let ssid = cfg.wifi_ssid().clone();
         if !ssid.is_empty() {
@@ -152,7 +157,8 @@ async fn main(spawner: Spawner) {
                 ))
                 .await;
         }
-    }
+        !ssid.is_empty()
+    };
     spawner.spawn(config_updated_task(config_rx, config, wifi_sender).unwrap());
     info!("wifi config task spawned (awaits config updates)");
 
@@ -162,6 +168,22 @@ async fn main(spawner: Spawner) {
     );
 
     let mut ap_state = false;
+    if !sta_configured {
+        // No STA credentials yet, so the device cannot be reached over the network:
+        // start the AP (and with it the config portal) instead of waiting for the
+        // boot button to be pressed.
+        info!(
+            "No STA credentials in config: starting the AP config portal at http://{}/",
+            esp_wifi_caddy::AP_IP_ADDRESS
+        );
+        wifi_sender
+            .send(esp_wifi_caddy::WifiCaddyCommand::APUp(
+                WifiApSsidPrefix::from_str(AP_SSID_PREFIX).unwrap(),
+            ))
+            .await;
+        ap_state = true;
+    }
+
     loop {
         button_pin.wait_for_falling_edge().await;
         if ap_state {
@@ -170,10 +192,13 @@ async fn main(spawner: Spawner) {
                 .send(esp_wifi_caddy::WifiCaddyCommand::APDown)
                 .await;
         } else {
-            info!("AP up");
+            info!(
+                "AP up: config portal at http://{}/",
+                esp_wifi_caddy::AP_IP_ADDRESS
+            );
             wifi_sender
                 .send(esp_wifi_caddy::WifiCaddyCommand::APUp(
-                    WifiApSsidPrefix::from_str("wifi-example-").unwrap(),
+                    WifiApSsidPrefix::from_str(AP_SSID_PREFIX).unwrap(),
                 ))
                 .await;
         }

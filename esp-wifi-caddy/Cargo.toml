@@ -153,7 +153,11 @@ esp-rtos = { version = "0.4.0", features = [
     "esp-alloc",
     "esp-radio",
 ] }
-esp-radio = { version = "=1.0.0-beta.1", features = ["wifi"] }
+# `esp-radio/unstable` exposes `WifiController::is_connected()` and
+# `WifiController::subscribe()`, which the connection task uses to wait for a STA
+# disconnect without busy-looping (see `wait_for_sta_disconnect` in src/lib.rs).
+# `esp-hal/unstable` is enabled unconditionally for the same kind of need.
+esp-radio = { version = "=1.0.0-beta.1", features = ["wifi", "unstable"] }
 
 defmt = { version = "1.0.1", optional = true }
 log = { version = "0.4", optional = true }

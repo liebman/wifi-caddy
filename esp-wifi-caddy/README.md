@@ -309,6 +309,11 @@ dependency (and its chip feature) is not needed in your own `Cargo.toml`. The sa
 goes for `esp-radio`'s `log-04` / `defmt` features, which follow this crate's
 `log` / `defmt` features.
 
+`esp-wifi-caddy` also enables `esp-hal`'s and `esp-radio`'s `unstable` features
+by itself: the Wi-Fi connection task waits for a STA disconnect with
+`WifiController::is_connected()` and `WifiController::subscribe()`, which are
+gated behind `esp-radio/unstable`. Applications do not need to enable them.
+
 The list covers every Wi-Fi capable chip `esp-radio` supports — ESP32-S31 is
 RISC-V (`riscv32imafc-unknown-none-elf`), not Xtensa. `esp32h2` and `esp32p4` are
 deliberately not offered: those parts have no Wi-Fi driver, and this crate always

@@ -30,6 +30,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   dependency of its own to select a chip.
 - `log` now forwards to `esp-radio/log-04`, matching the existing
   `esp-radio/defmt` forwarding of the `defmt` feature.
+- The connection task logs the generated AP SSID when the AP is enabled
+  (`APUp`) and the SSID it connects to (`debug`), so the AP name — which is the
+  configured prefix plus the AP MAC — is visible in the log.
 
 ### Changed
 
@@ -45,6 +48,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `FlashConfigStorage` uses type-state (`Unmounted` → `Mounted`) and no longer heap-allocates. ([#4])
 - Eliminated all panicking spawns and `Box::leak()` — `wifi_init!` propagates errors via `Result`. ([#4])
 - Notification uses `DynamicSender` directly instead of `Option` wrappers. ([#4])
+
+### Fixed
+
+- **The Wi-Fi connection task no longer busy-loops while the station is not
+  connected.** `WifiController::wait_for_disconnect_async` resolves immediately
+  with `WifiError::NotConnected` in that state, so the task's `select3` completed
+  on every poll: it flooded the log with
+  `wifi: connection task: StaDisconnected - reconnect in 5s`, never reached the
+  reconnect timer that is supposed to wait 5 s, and never yielded to the executor
+  — starving the config portal, DNS, DHCP and application tasks. Disconnects are
+  now awaited only while a STA connection is expected, using
+  `WifiController::subscribe()` with the subscription created *before* the first
+  station-state read, so a disconnect can be neither missed nor busy-polled.
+- `esp-wifi-caddy` now enables `esp-radio`'s `unstable` feature (as it already
+  does `esp-hal`'s) for `WifiController::is_connected()` and
+  `WifiController::subscribe()`, which the connection task uses. Applications
+  need no change.
 
 [#3]: https://github.com/liebman/wifi-caddy/issues/3
 [#4]: https://github.com/liebman/wifi-caddy/pull/4

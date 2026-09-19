@@ -1,14 +1,18 @@
 {
 	"folders": [
 		{
-			"path": "./", "name": "wifi-example",
+			"path": "./",
+			"name": "wifi-example"
 		},
-		// {
-		// 	"path": "../../esp-wifi-caddy"
-		// },
-		// {
-		// 	"path": "../../wifi-caddy-proc"
-		// }
+		{
+			"path": "../../esp-wifi-caddy"
+		},
+		{
+			"path": "../../wifi-caddy"
+		},
+		{
+			"path": "../../wifi-caddy-proc"
+		}
 	],
 	"settings": {
 		"editor.formatOnSave": true,

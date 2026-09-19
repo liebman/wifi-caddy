@@ -140,11 +140,16 @@ espup install    # or: espup update
    credentials change it sends `StaUp` to the WiFi manager; when example fields
    change it logs the new values.
 3. `ip_address_task` polls and reports STA IP address changes.
-4. The boot button (GPIO 0) toggles the AP on/off with each press.
+4. The AP starts at boot when the config has no STA credentials (a fresh device
+   has no other way in); the boot button (GPIO 0) toggles the AP off and on with
+   each press.
 
 ## Captive portal
 
 When the AP is up, an HTTP config UI is served at `http://192.168.2.1/`.
+The AP SSID is `wifi-example-` followed by the AP MAC (for example
+`wifi-example-3cdc75844da0`); the connection task logs the exact SSID when the AP
+is enabled, so check the monitor output for `AP SSID: ...`.
 With the `captive` feature (default in esp-wifi-caddy), connecting to the AP
 opens the config portal automatically via DNS redirect.
 

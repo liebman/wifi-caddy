@@ -26,6 +26,8 @@ use esp_radio::wifi::ControllerConfig;
 use esp_radio::wifi::Interface;
 use esp_radio::wifi::WifiController;
 use esp_radio::wifi::ap::AccessPointConfig;
+use esp_radio::wifi::event::EventInfo;
+use esp_radio::wifi::event::MessageResult;
 use esp_radio::wifi::sta::StationConfig;
 use esp_radio::wifi::{AuthenticationMethodConfig, Password, Ssid};
 
@@ -286,6 +288,52 @@ async fn reconnect_timer(at: Option<Instant>) {
     }
 }
 
+/// Wait for the STA to lose its connection.
+///
+/// `armed` is a snapshot of [`WifiRunner::sta_connection_expected`]: while it is
+/// `false` there is no connection to lose, so this future stays pending. That
+/// keeps the connection task parked - yielding to the executor - instead of
+/// spinning on a future that is ready immediately
+/// (`WifiController::wait_for_disconnect_async` returns `WifiError::NotConnected`
+/// on its first poll while the STA is not connected), and it is what makes the
+/// "reconnect in 5s" retry actually wait 5 s.
+///
+/// While armed, the driver's events are subscribed *before* the station state is
+/// read. That order is what makes the wait race free: a disconnect that happens
+/// after the read is delivered to the subscription created before it, and a
+/// disconnect that happens before the read has already flipped the state it sees.
+async fn wait_for_sta_disconnect(controller: &WifiController<'_>, armed: bool) {
+    if !armed {
+        return core::future::pending().await;
+    }
+
+    // `subscribe` only fails when the driver's event channel is out of subscriber
+    // slots; `wait_for_disconnect_async` would panic there, so park instead and
+    // let commands drive the task.
+    let mut events = match controller.subscribe() {
+        Ok(events) => events,
+        Err(e) => {
+            warn!(
+                "wifi: connection task: subscribing to wifi events failed: {:?}",
+                e
+            );
+            return core::future::pending().await;
+        }
+    };
+
+    loop {
+        if !controller.is_connected() {
+            return;
+        }
+        match events.next_event().await {
+            MessageResult::Message(EventInfo::StationDisconnected { .. }) => return,
+            // Any other event - and `Lagged`, which means this subscriber missed
+            // events - says nothing about a disconnect: re-check the state.
+            MessageResult::Message(_) | MessageResult::Lagged(_) => (),
+        }
+    }
+}
+
 struct WifiRunner {
     controller: WifiController<'static>,
     ap_up: bool,
@@ -295,6 +343,11 @@ struct WifiRunner {
     pass: WifiPass,
     wifi_commands: WifiCommandReceiver,
     reconnect_at: Option<Instant>,
+    /// Snapshotted from the driver state after every connect attempt and cleared
+    /// when a disconnect is observed: a one-bit memory of "the STA was connected",
+    /// which closes the window between a successful connect and the next look at
+    /// [`Self::sta_connection_expected`].
+    sta_connected: bool,
 }
 
 impl WifiRunner {
@@ -312,7 +365,17 @@ impl WifiRunner {
             pass: WifiPass::new(),
             wifi_commands,
             reconnect_at: None,
+            sta_connected: false,
         }
+    }
+
+    /// Whether a STA disconnect is currently worth waiting for.
+    ///
+    /// The driver state covers a connection the driver re-established itself; the
+    /// flag covers a connection dropped between a successful `connect_async` and
+    /// this check.
+    fn sta_connection_expected(&self) -> bool {
+        self.sta_connected || self.controller.is_connected()
     }
 
     fn ap_ssid(&self) -> WifiSsid {
@@ -384,8 +447,11 @@ impl WifiRunner {
         if self.ssid.is_empty() {
             return true;
         }
-        debug!("wifi: connection task: connecting to wifi");
-        match self.controller.connect_async().await {
+        debug!(
+            "wifi: connection task: connecting to wifi: {}",
+            self.ssid.as_str()
+        );
+        let connected = match self.controller.connect_async().await {
             Ok(_) => {
                 debug!("wifi: connection task: STA connected!");
                 true
@@ -394,7 +460,12 @@ impl WifiRunner {
                 error!("wifi: connection task: STA connect failed: {:?}", e);
                 false
             }
-        }
+        };
+        // The driver is the authority: `connect_async` fails with
+        // `ESP_ERR_WIFI_CONN` (`WifiError::Other`) when the STA is already
+        // connected, and applying a config does not necessarily drop it.
+        self.sta_connected = self.controller.is_connected();
+        connected
     }
 
     async fn sync_state(&mut self, connect_sta: bool) {
@@ -415,6 +486,10 @@ impl WifiRunner {
                 info!("wifi: connection task: APUp command");
                 self.ap_ssid_prefix = prefix;
                 self.ap_up = true;
+                info!(
+                    "wifi: connection task: AP SSID: {}",
+                    self.ap_ssid().as_str()
+                );
                 true
             }
             WifiCaddyCommand::APDown => {
@@ -443,7 +518,7 @@ impl WifiRunner {
         loop {
             match select3(
                 self.wifi_commands.receive(),
-                self.controller.wait_for_disconnect_async(),
+                wait_for_sta_disconnect(&self.controller, self.sta_connection_expected()),
                 reconnect_timer(self.reconnect_at),
             )
             .await
@@ -452,7 +527,8 @@ impl WifiRunner {
                     let mode_change = self.handle_command(cmd).await;
                     self.sync_state(mode_change || !self.ssid.is_empty()).await;
                 }
-                Either3::Second(_disconnect_info) => {
+                Either3::Second(_) => {
+                    self.sta_connected = false;
                     warn!(
                         "wifi: connection task: StaDisconnected - reconnect in {}s",
                         STA_RECONNECT_DELAY_MS / 1000

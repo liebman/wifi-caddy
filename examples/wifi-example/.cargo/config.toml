@@ -75,6 +75,6 @@ run-c6    = "run    --config .cargo/config-c6.toml --release --features esp32c6"
 build-std = ["alloc", "core"]
 
 [env]
-# ESP_LOG = "esp_wifi_caddy=debug,wifi_caddy::portal=debug,edge_captive=debug,info"
-ESP_LOG = "info"
+ESP_LOG = "esp_wifi_caddy=debug,wifi_caddy::portal=debug,edge_captive=debug,info"
+# ESP_LOG = "info"
 DEFMT_LOG = "info"
