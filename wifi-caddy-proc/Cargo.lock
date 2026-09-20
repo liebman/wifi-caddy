@@ -141,8 +141,9 @@ dependencies = [
 
 [[package]]
 name = "edge-dhcp"
-version = "0.7.0"
-source = "git+https://github.com/ivmarkov/edge-net?rev=1f084b41944c35b233cbe17accfbc09a56d5eaf0#1f084b41944c35b233cbe17accfbc09a56d5eaf0"
+version = "0.8.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f7a6f957c944e22c2c1904618863702e8af302953454ac738e6df0c7038c4d88"
 dependencies = [
  "edge-nal",
  "edge-raw",
@@ -155,8 +156,9 @@ dependencies = [
 
 [[package]]
 name = "edge-http"
-version = "0.7.0"
-source = "git+https://github.com/ivmarkov/edge-net?rev=1f084b41944c35b233cbe17accfbc09a56d5eaf0#1f084b41944c35b233cbe17accfbc09a56d5eaf0"
+version = "0.8.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2e8d05b815a091dc636cc1d62374cf1b96b763117291242882f9741dd4e251ed"
 dependencies = [
  "base64",
  "edge-nal",
@@ -170,8 +172,9 @@ dependencies = [
 
 [[package]]
 name = "edge-nal"
-version = "0.6.0"
-source = "git+https://github.com/ivmarkov/edge-net?rev=1f084b41944c35b233cbe17accfbc09a56d5eaf0#1f084b41944c35b233cbe17accfbc09a56d5eaf0"
+version = "0.7.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "590182a48668fa4988cd97b9b500bcc9a213e9b122b4e0008e934b3916c64031"
 dependencies = [
  "embassy-time",
  "embedded-io-async",
@@ -179,8 +182,9 @@ dependencies = [
 
 [[package]]
 name = "edge-nal-embassy"
-version = "0.8.1"
-source = "git+https://github.com/ivmarkov/edge-net?rev=1f084b41944c35b233cbe17accfbc09a56d5eaf0#1f084b41944c35b233cbe17accfbc09a56d5eaf0"
+version = "0.9.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "79ad23a63d41bdda528a3b725ae9119ce58abeea265b41fc7f8b254c8d07b2a2"
 dependencies = [
  "edge-nal",
  "embassy-futures",
@@ -190,8 +194,9 @@ dependencies = [
 
 [[package]]
 name = "edge-raw"
-version = "0.7.0"
-source = "git+https://github.com/ivmarkov/edge-net?rev=1f084b41944c35b233cbe17accfbc09a56d5eaf0#1f084b41944c35b233cbe17accfbc09a56d5eaf0"
+version = "0.8.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c87c23c2a56d22076013bbf039425369d05bdb9ac833e3249c48008a46e1f95c"
 
 [[package]]
 name = "embassy-executor"

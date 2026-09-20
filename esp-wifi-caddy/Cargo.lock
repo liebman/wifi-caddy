@@ -413,12 +413,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "deranged"
-version = "0.5.8"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7cd812cc2bc1d69d4764bd80df88b4317eaef9e773c75226407d9bc0876b211c"
-
-[[package]]
 name = "digest"
 version = "0.10.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -469,21 +463,21 @@ dependencies = [
 
 [[package]]
 name = "domain"
-version = "0.11.1"
+version = "0.12.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7f7ff15f82df7d5086fb15dfc1c1e96598a6ded9829840a9bcfa1fa3ccd8d01d"
+checksum = "0c13d25dfb29edf328c7eb4ebb24838ade355272d685ba0402b8751567c3dde2"
 dependencies = [
  "domain-macros",
- "heapless 0.8.0",
+ "heapless 0.9.3",
+ "jiff",
  "octseq",
- "time",
 ]
 
 [[package]]
 name = "domain-macros"
-version = "0.11.1"
+version = "0.12.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8d1a6796ad411f6812d691955066ad27450196bfb181bb91b66a643cc3e8f5b7"
+checksum = "e68f247cb4e380bcdf44c1e27d7d046cbb321c4ab4a01271a51dfb19326b6b0e"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -492,8 +486,9 @@ dependencies = [
 
 [[package]]
 name = "edge-captive"
-version = "0.7.0"
-source = "git+https://github.com/ivmarkov/edge-net?rev=1f084b41944c35b233cbe17accfbc09a56d5eaf0#1f084b41944c35b233cbe17accfbc09a56d5eaf0"
+version = "0.8.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "40b33a9eb1a9d1a7357afdd83b85e8134bed8ef5e2d00ccb05cb6b1e8168e698"
 dependencies = [
  "domain",
  "edge-nal",
@@ -501,8 +496,9 @@ dependencies = [
 
 [[package]]
 name = "edge-dhcp"
-version = "0.7.0"
-source = "git+https://github.com/ivmarkov/edge-net?rev=1f084b41944c35b233cbe17accfbc09a56d5eaf0#1f084b41944c35b233cbe17accfbc09a56d5eaf0"
+version = "0.8.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f7a6f957c944e22c2c1904618863702e8af302953454ac738e6df0c7038c4d88"
 dependencies = [
  "edge-nal",
  "edge-raw",
@@ -515,8 +511,9 @@ dependencies = [
 
 [[package]]
 name = "edge-http"
-version = "0.7.0"
-source = "git+https://github.com/ivmarkov/edge-net?rev=1f084b41944c35b233cbe17accfbc09a56d5eaf0#1f084b41944c35b233cbe17accfbc09a56d5eaf0"
+version = "0.8.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2e8d05b815a091dc636cc1d62374cf1b96b763117291242882f9741dd4e251ed"
 dependencies = [
  "base64",
  "defmt 1.1.1",
@@ -532,8 +529,9 @@ dependencies = [
 
 [[package]]
 name = "edge-nal"
-version = "0.6.0"
-source = "git+https://github.com/ivmarkov/edge-net?rev=1f084b41944c35b233cbe17accfbc09a56d5eaf0#1f084b41944c35b233cbe17accfbc09a56d5eaf0"
+version = "0.7.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "590182a48668fa4988cd97b9b500bcc9a213e9b122b4e0008e934b3916c64031"
 dependencies = [
  "embassy-time",
  "embedded-io-async 0.7.0",
@@ -541,8 +539,9 @@ dependencies = [
 
 [[package]]
 name = "edge-nal-embassy"
-version = "0.8.1"
-source = "git+https://github.com/ivmarkov/edge-net?rev=1f084b41944c35b233cbe17accfbc09a56d5eaf0#1f084b41944c35b233cbe17accfbc09a56d5eaf0"
+version = "0.9.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "79ad23a63d41bdda528a3b725ae9119ce58abeea265b41fc7f8b254c8d07b2a2"
 dependencies = [
  "defmt 1.1.1",
  "edge-nal",
@@ -553,8 +552,9 @@ dependencies = [
 
 [[package]]
 name = "edge-raw"
-version = "0.7.0"
-source = "git+https://github.com/ivmarkov/edge-net?rev=1f084b41944c35b233cbe17accfbc09a56d5eaf0#1f084b41944c35b233cbe17accfbc09a56d5eaf0"
+version = "0.8.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c87c23c2a56d22076013bbf039425369d05bdb9ac833e3249c48008a46e1f95c"
 
 [[package]]
 name = "embassy-embedded-hal"
@@ -1895,12 +1895,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "num-conv"
-version = "0.2.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "521739c6d2bac4aa25192232afe6841231376b2b26d4d9fae5ecf8ca5772e441"
-
-[[package]]
 name = "num-derive"
 version = "0.4.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1952,11 +1946,11 @@ dependencies = [
 
 [[package]]
 name = "octseq"
-version = "0.5.2"
+version = "0.6.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "126c3ca37c9c44cec575247f43a3e4374d8927684f129d2beeb0d2cef262fe12"
+checksum = "182eab3e1cd9cdc0ecf1ce3342d9844f3dc7d098f0694569bfdf327b612d69fd"
 dependencies = [
- "heapless 0.8.0",
+ "heapless 0.9.3",
 ]
 
 [[package]]
@@ -2012,12 +2006,6 @@ dependencies = [
  "quote",
  "syn 2.0.119",
 ]
-
-[[package]]
-name = "powerfmt"
-version = "0.2.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "439ee305def115ba05938db6eb1644ff94165c5ab5e9420d1c1bcedbba909391"
 
 [[package]]
 name = "proc-macro-crate"
@@ -2460,24 +2448,6 @@ checksum = "1ad99c4c6d32803332c548b1af0540b357b3f5fc0be8f6c6bfe8b2e6ae784070"
 dependencies = [
  "cfg-if",
 ]
-
-[[package]]
-name = "time"
-version = "0.3.55"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "cdb87b95ec50ddfa440816d227a17b2ccbdda963a316a727fda0fc4334f7d134"
-dependencies = [
- "deranged",
- "num-conv",
- "powerfmt",
- "time-core",
-]
-
-[[package]]
-name = "time-core"
-version = "0.1.9"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9e1c906769ad99c88eaa54e728060edef082f8e358ff32030cb7c7d315e81109"
 
 [[package]]
 name = "toml_datetime"

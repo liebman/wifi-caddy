@@ -36,6 +36,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- `wifi-caddy` now depends on the released `edge-*` crates
+  (`edge-http` 0.8, `edge-nal` 0.7, `edge-nal-embassy` 0.9, `edge-dhcp` 0.8,
+  `edge-captive` 0.8, workspace v0.16.0) instead of a pinned git revision of
+  `ivmarkov/edge-net`, so a clean build no longer fetches from GitHub and the
+  crate can be published (crates.io rejects git dependencies). Applications need
+  no change: the portal's API usage is unchanged, and the dependency stack
+  (`embassy-net` 0.9 / `embassy-sync` 0.8 / `embedded-io-async` 0.7) is the same.
 - **The target chip is selected with an `esp-wifi-caddy` chip feature** instead of
   enabling the chip feature on `esp-radio` (and the rest of the `esp-*` stack) in
   the application's own `Cargo.toml`. Nothing changed for existing config users

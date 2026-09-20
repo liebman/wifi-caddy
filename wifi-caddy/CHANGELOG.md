@@ -11,6 +11,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Dependencies: the `edge-*` crates now come from crates.io releases
+  (`edge-http` 0.8, `edge-nal` 0.7, `edge-nal-embassy` 0.9, `edge-dhcp` 0.8,
+  `edge-captive` 0.8) instead of a pinned git revision of `ivmarkov/edge-net`
+  (upstream moved to `sysgrok/edge-net`; these are the workspace v0.16.0
+  releases, built against the same `embassy-net` 0.9 this crate uses). No API or
+  behaviour change — every type and function the portal uses is identical, and a
+  clean build no longer fetches from GitHub.
 - **Breaking:** `ConfigHandle<C>` is now a type alias for `&'static Mutex<…, C>` — remove `.config()` calls. ([#4], closes [#3])
 - **Breaking:** `portal` feature gate removed — HTTP server and config storage are always compiled in. ([#4])
 - **Breaking:** Config notification uses `DynamicSender` directly everywhere instead of `Option` wrappers and callback closures. ([#4])

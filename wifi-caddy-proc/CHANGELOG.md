@@ -11,6 +11,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Dev-dependency refresh only (no effect on generated code): `wifi-caddy`'s
+  `edge-*` crates resolve from crates.io releases (`edge-http` 0.8,
+  `edge-nal` 0.7, `edge-nal-embassy` 0.9, `edge-dhcp` 0.8, `edge-captive` 0.8)
+  instead of a pinned git revision of `ivmarkov/edge-net`.
 - **Breaking:** Config page (HTML + CSS + JS) is now generated as a single static string at compile time, replacing the per-group segment arrays. ([#4], closes [#3])
 - **Breaking:** `#[config_server]` and `#[config_notify]` are no longer required — `ConfigServer` and the update channel are always generated with sensible defaults. ([#4])
 - `ConfigChange` fires a catchall `Changed` variant for fields without explicit `notify = "..."` instead of silently ignoring them. ([#4])
