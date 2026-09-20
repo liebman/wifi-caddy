@@ -28,7 +28,12 @@ const AP_POOL_END: Ipv4Addr = Ipv4Addr::new(192, 168, 2, 200);
 pub async fn run(stack: Stack<'static>) {
     info!("dhcp: start DHCP task");
 
-    let buffers = UdpBuffers::<1, 1500, 1500, 2>::new();
+    // Sizing: the receive side has to hold a client request (RFC 2131's minimum
+    // client message size is 576 bytes; 1024 leaves room for large option sets),
+    // while the transmit side only carries our reply — a 236-byte BOOTP header,
+    // the 4-byte magic cookie and at most `Options::buf()`'s 8 options, so about
+    // 320 bytes in practice — and 600 gives a 2x margin.
+    let buffers = UdpBuffers::<1, 600, 1024, 1>::new();
     let udp = Udp::new(stack, &buffers);
 
     let mut socket = match udp
@@ -54,7 +59,9 @@ pub async fn run(stack: Stack<'static>) {
     let mut server_options = ServerOptions::new(AP_IP_ADDRESS, Some(&mut gw_buf));
     server_options.dns = &dns;
 
-    let mut buf = [0; 1500];
+    // Scratch buffer for one datagram: receives the request and holds the
+    // encoded reply (see the buffer-sizing note above).
+    let mut buf = [0; 1024];
     if let Err(_e) =
         edge_dhcp::io::server::run(&mut server, &server_options, &mut socket, &mut buf).await
     {

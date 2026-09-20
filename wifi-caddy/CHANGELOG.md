@@ -11,6 +11,45 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **The HTTP portal's static RAM is about 40 % smaller.** `WIFI_CADDY_HTTP_BUF_SIZE`
+  and `WIFI_CADDY_TCP_BUF_SIZE` now default to 2048 and 1024 (each matches the
+  corresponding upstream library default; they were 4096 and 2048), and the new
+  `WIFI_CADDY_HTTP_MAX_HEADERS` (default 32, `edge-http` defaults to 64) is passed
+  to `edge-http`'s `Server` explicitly instead of being left at its internal
+  default. On an ESP32-C6 release build the portal's static RAM drops from 80 KiB
+  to 49 KiB: HTTP task pool 41,600 → 26,312 B, TCP buffers 16,389 → 8,197 B, DHCP
+  7,152 → 5,264 B, DNS 6,392 → 2,408 B, `StackResources` pair 10,480 → 7,664 B.
+  `WIFI_CADDY_HANDLER_TASKS` stays at 4: with 2 handlers a single stalled
+  connection took the whole portal down on an iPhone (see below). Set the
+  variables back to 4096/2048/64 for the previous buffer sizes.
+- **Fixed: a stalled connection could pin a handler forever and take the portal
+  down.** `edge-http` installs no IO timeouts of its own — its documentation asks
+  the caller to wrap the acceptor in `edge_nal::WithTimeout` — so one client that
+  connected and then stopped talking (a browser's speculative pre-connect, a phone
+  that left the AP) held its handler, its TCP socket and its HTTP buffer
+  indefinitely. Because smoltcp has no listen backlog, once every handler was
+  pinned there was no listening socket left and the portal reset every new
+  connection; this was reproduced on an iPhone, where only one handler logged
+  requests after the other had hit a connection reset. `serve_loop` now wraps the
+  acceptor in `WithTimeout::new(IO_TIMEOUT_MS, ...)`, with a new
+  `WIFI_CADDY_IO_TIMEOUT_MS` (default 5000) bounding every read, write and
+  shutdown on an accepted socket, so the handler closes the connection and returns
+  to `accept()`. That wrapper nests the TCP, timeout and HTTP state machines, so
+  applications should add `#![recursion_limit = "256"]` (the example does).
+- The DHCP server's UDP buffers are 1024 B receive / 600 B transmit with one
+  packet-metadata slot (was 1500/1500 with two), and the captive DNS server uses
+  512-byte buffers. A DHCP reply is a 236-byte BOOTP header plus at most
+  `Options::buf()`'s 8 options (~320 B in practice); DNS queries with an EDNS0
+  OPT record are ~50-80 B, since EDNS0 declares a larger *response* size rather
+  than inflating the query.
+- `config_storage::MAX_VALUE_SIZE` is 128 bytes (was 256) and the config-group
+  JSON response buffer is 384 bytes (was 512). Values longer than
+  `MAX_VALUE_SIZE` (after serialization) fail to store with
+  `ConfigError::BufferTooSmall`, so raise it — and the storage backend's own
+  buffer, which must be at least as large — if a config has long `String` fields.
+- The tuning constants are now `pub` (`wifi_caddy::portal::{HANDLER_TASKS,
+  TCP_BUF_SIZE, HTTP_BUF_SIZE, KEEPALIVE_TIMEOUT_MS, HTTP_MAX_HEADERS}`) so an
+  application can log or assert them next to its own memory accounting.
 - Dependencies: the `edge-*` crates now come from crates.io releases
   (`edge-http` 0.8, `edge-nal` 0.7, `edge-nal-embassy` 0.9, `edge-dhcp` 0.8,
   `edge-captive` 0.8) instead of a pinned git revision of `ivmarkov/edge-net`

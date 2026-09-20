@@ -283,6 +283,34 @@ These are used directly in application code:
 | `config_storage::ConfigValue` | Trait to implement for custom field types in your config struct (serialization + getter) |
 | `config_storage::MAX_VALUE_SIZE` | Max bytes per stored value (used by `ConfigStorage` default impls) |
 
+## Memory footprint
+
+Two sets of compile-time knobs decide how much static RAM the WiFi stacks and the
+config portal reserve. Both are read by build scripts, so set them in `[env]` in
+`.cargo/config.toml` or in the environment:
+
+| Environment variable | Default | Effect |
+| --- | --- | --- |
+| `ESP_WIFI_CADDY_AP_SOCKETS` | `8` | Sockets on the access-point stack (`StackResources<N>`) |
+| `ESP_WIFI_CADDY_STA_SOCKETS` | `4` | Sockets on the station stack |
+| `WIFI_CADDY_HANDLER_TASKS` | `4` | Concurrent HTTP config-portal connections |
+| `WIFI_CADDY_HTTP_BUF_SIZE` | `2048` | Per-connection HTTP work buffer (bytes) |
+| `WIFI_CADDY_TCP_BUF_SIZE` | `1024` | Per-connection TCP receive *and* transmit buffer (bytes) |
+| `WIFI_CADDY_HTTP_MAX_HEADERS` | `32` | Request headers parsed per connection |
+| `WIFI_CADDY_IO_TIMEOUT_MS` | `5000` | Idle read/write timeout per connection (ms) |
+
+Every socket slot costs 352 bytes plus a fixed per-stack overhead, and every HTTP
+handler costs its buffers plus a ~4.5 KiB connection future, so these values
+dominate the portal's static RAM. The AP stack has to cover
+`WIFI_CADDY_HANDLER_TASKS` plus the DHCP server and the captive DNS server, plus
+headroom for clients that are connected but not yet being served; the STA stack
+only needs the DHCP client plus whatever the application opens.
+
+The values are readable in code as `esp_wifi_caddy::AP_SOCKET_COUNT` /
+`STA_SOCKET_COUNT` and `wifi_caddy::portal::{HANDLER_TASKS, HTTP_BUF_SIZE,
+TCP_BUF_SIZE, HTTP_MAX_HEADERS}`. `examples/wifi-example/footprint.sh` reports
+where a build's flash and RAM actually went.
+
 ## Features
 
 | Feature | Default | Description |

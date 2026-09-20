@@ -14,6 +14,7 @@ use core::net::{Ipv4Addr, SocketAddr, SocketAddrV4};
 
 use edge_http::io::server::{Handler, Server};
 use edge_nal::TcpBind;
+use edge_nal::WithTimeout;
 use edge_nal_embassy::{Tcp, TcpBuffers};
 use embassy_executor::Spawner;
 use embassy_net::Stack;
@@ -36,10 +37,12 @@ pub async fn serve_loop<H: Handler>(stack: Stack<'static>, handler: H) -> ! {
     debug!("serve_loop: HANDLER_TASKS = {}", HANDLER_TASKS);
     debug!("serve_loop: TCP_BUF_SIZE = {}", TCP_BUF_SIZE);
     debug!("serve_loop: HTTP_BUF_SIZE = {}", HTTP_BUF_SIZE);
+    debug!("serve_loop: HTTP_MAX_HEADERS = {}", HTTP_MAX_HEADERS);
     debug!(
         "serve_loop: KEEPALIVE_TIMEOUT_MS = {}",
         KEEPALIVE_TIMEOUT_MS
     );
+    debug!("serve_loop: IO_TIMEOUT_MS = {}", IO_TIMEOUT_MS);
     static TCP_BUF: StaticCell<TcpBuffers<{ HANDLER_TASKS }, { TCP_BUF_SIZE }, { TCP_BUF_SIZE }>> =
         StaticCell::new();
     let tcp_buffers = TCP_BUF.uninit().write(TcpBuffers::new());
@@ -64,7 +67,18 @@ pub async fn serve_loop<H: Handler>(stack: Stack<'static>, handler: H) -> ! {
         }
     };
 
-    let mut server = Server::<{ HANDLER_TASKS }, { HTTP_BUF_SIZE }>::new();
+    // Bound the IO of every accepted connection. `edge-http` deliberately installs
+    // no IO timeouts of its own, and a handler task holds its TCP socket (one slot
+    // of the buffer pool above) and its HTTP buffer for the whole connection: a
+    // client that connects and then stalls — a browser's speculative pre-connect,
+    // a phone that dropped off the AP — would otherwise pin that handler
+    // indefinitely. Since smoltcp has no listen backlog, a pinned handler also
+    // means one fewer listening socket, and once all handlers are pinned the
+    // portal resets every new connection. With this timeout a stalled connection
+    // is dropped and the handler returns to `accept()`.
+    let acceptor = WithTimeout::new(IO_TIMEOUT_MS, acceptor);
+
+    let mut server = Server::<{ HANDLER_TASKS }, { HTTP_BUF_SIZE }, { HTTP_MAX_HEADERS }>::new();
     match server
         .run(Some(KEEPALIVE_TIMEOUT_MS), acceptor, handler)
         .await
@@ -104,7 +118,11 @@ pub async fn serve_loop_debug<H: Handler>(stack: Stack<'static>, handler: H) -> 
         }
     };
 
-    let mut server = Server::<1, { HTTP_BUF_SIZE }>::new();
+    // Same IO timeout as `serve_loop` (see the note there): the debug server runs
+    // a single handler, so a stalled connection would take the server down.
+    let acceptor = WithTimeout::new(IO_TIMEOUT_MS, acceptor);
+
+    let mut server = Server::<1, { HTTP_BUF_SIZE }, { HTTP_MAX_HEADERS }>::new();
     match server
         .run(Some(KEEPALIVE_TIMEOUT_MS), acceptor, handler)
         .await

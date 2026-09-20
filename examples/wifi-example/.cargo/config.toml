@@ -78,3 +78,26 @@ build-std = ["alloc", "core"]
 ESP_LOG = "esp_wifi_caddy=debug,wifi_caddy::portal=debug,edge_captive=debug,info"
 # ESP_LOG = "info"
 DEFMT_LOG = "info"
+
+# Memory profile for the HTTP config portal (read by wifi-caddy's build script,
+# so it applies to the wifi-caddy build in this target directory). These are the
+# wifi-caddy defaults; they are spelled out here so the example's footprint is
+# explicit and does not drift if the defaults change. Each handler task costs an
+# HTTP buffer, a ~4.5 KiB connection future and a TCP buffer pair, so
+# WIFI_CADDY_HANDLER_TASKS is the biggest lever — but keep it at 4 unless you have
+# tested otherwise: smoltcp has no listen backlog, so every handler that is busy
+# (or stalled on a dead client) is one less listening socket, and an iPhone opens
+# several connections at once. 2 was measured to be too few on real iPhone
+# captive-portal traffic.
+WIFI_CADDY_HANDLER_TASKS = "4"     # concurrent HTTP connections (2 = smallest, 4 = default)
+WIFI_CADDY_HTTP_BUF_SIZE = "2048"  # per-connection request-head buffer (was 4096)
+WIFI_CADDY_TCP_BUF_SIZE = "1024"   # per-connection TCP rx/tx buffer (was 2048)
+WIFI_CADDY_HTTP_MAX_HEADERS = "32" # parsed request headers per connection (was 64)
+WIFI_CADDY_IO_TIMEOUT_MS = "5000"  # idle IO timeout per connection (no timeout before)
+# WIFI_CADDY_KEEPALIVE_TIMEOUT_MS = "3000"
+
+# Socket counts per network stack. The AP stack has to cover the portal's
+# concurrent connections (WIFI_CADDY_HANDLER_TASKS) plus the DHCP and DNS servers
+# plus headroom; every slot costs ~352 bytes.
+ESP_WIFI_CADDY_AP_SOCKETS = "8"
+ESP_WIFI_CADDY_STA_SOCKETS = "4"

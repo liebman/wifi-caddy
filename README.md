@@ -167,7 +167,8 @@ For the full integration guide, API reference, and feature flags, see the
 
 The [wifi-example](examples/wifi-example/README.md) demonstrates WiFi
 connection, flash-backed config, and config change notifications. Press the
-boot button (GPIO 0) to toggle the AP on and off — when the AP is up, the
+devkit BOOT button (GPIO0 on the ESP32/S2/S3, GPIO9 on the C2/C3/C6/C61, GPIO28
+on the C5) to toggle the AP on and off — when the AP is up, the
 captive config portal is served at `192.168.2.1` and phones will open it
 automatically. It's the best starting point for understanding the system end
 to end.

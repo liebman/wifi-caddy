@@ -2,11 +2,18 @@
 //!
 //! Config: WiFi credentials and example string/integer. Storage in flash (config partition).
 //! The AP (and with it the HTTP config UI) starts at boot when the config has no
-//! STA credentials, so a fresh device is reachable; the boot button (GPIO 0)
-//! toggles the AP off and on.
+//! STA credentials, so a fresh device is reachable; the devkit BOOT button
+//! (GPIO0 on the ESP32/S2/S3, GPIO9 on the C2/C3/C6/C61, GPIO28 on the C5 —
+//! the chip's download-boot strapping pin, see `boot_pin` below) toggles the AP
+//! off and on.
 
 #![no_std]
 #![no_main]
+// The portal's HTTP connection future nests the TCP, timeout and HTTP state
+// machines (fetch -> handle_connection -> Connection -> WithTimeout -> ...), which
+// exceeds rustc's default type-layout recursion limit (128). Applications that use
+// the config portal need the same attribute.
+#![recursion_limit = "256"]
 
 extern crate alloc;
 
@@ -162,8 +169,32 @@ async fn main(spawner: Spawner) {
     spawner.spawn(config_updated_task(config_rx, config, wifi_sender).unwrap());
     info!("wifi config task spawned (awaits config updates)");
 
+    // Devkit BOOT button. It pulls the chip's download-boot strapping pin low, and
+    // that pin is not GPIO0 on every chip — see the per-chip "Boot Mode Selection"
+    // docs, https://docs.espressif.com/projects/esptool/en/latest/<chip>/advanced-topics/boot-mode-selection.html
+    //
+    //   esp32, esp32s2, esp32s3              -> GPIO0
+    //   esp32c2, esp32c3, esp32c6, esp32c61  -> GPIO9
+    //   esp32c5                              -> GPIO28
+    //   esp32s31                             -> GPIO61 (experimental chip, best effort)
+    #[cfg(any(feature = "esp32", feature = "esp32s2", feature = "esp32s3"))]
+    let boot_pin = peripherals.GPIO0;
+    #[cfg(any(
+        feature = "esp32c2",
+        feature = "esp32c3",
+        feature = "esp32c6",
+        feature = "esp32c61"
+    ))]
+    let boot_pin = peripherals.GPIO9;
+    #[cfg(feature = "esp32c5")]
+    let boot_pin = peripherals.GPIO28;
+    #[cfg(feature = "esp32s31")]
+    let boot_pin = peripherals.GPIO61;
+
+    // The BOOT pins have an internal pull-up (and the devkit adds one), so the
+    // button reads high when released and low when pressed.
     let mut button_pin = esp_hal::gpio::Input::new(
-        peripherals.GPIO0, // BOOT_BUTTON_GPIO
+        boot_pin,
         InputConfig::default().with_pull(Pull::Up),
     );
 

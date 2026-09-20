@@ -36,6 +36,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **Breaking:** the socket count of each network stack is now configurable with
+  the `ESP_WIFI_CADDY_AP_SOCKETS` (default 8) and `ESP_WIFI_CADDY_STA_SOCKETS`
+  (default 4) build-script variables, replacing the fixed
+  `STACK_SOCKET_COUNT = 10`. Every socket slot costs 352 bytes plus a fixed
+  per-stack overhead, so the two `StackResources` drop from 10,480 to 7,664 bytes
+  on an ESP32-C6 build. The values are exported as
+  `esp_wifi_caddy::{AP_SOCKET_COUNT, STA_SOCKET_COUNT}`; applications that open
+  more sockets than the default on either stack must raise the corresponding
+  variable. The AP stack also has to cover the config portal's
+  `WIFI_CADDY_HANDLER_TASKS` plus the DHCP and DNS servers, plus headroom —
+  the default of 8 covers the portal's default of 4 handlers.
 - `wifi-caddy` now depends on the released `edge-*` crates
   (`edge-http` 0.8, `edge-nal` 0.7, `edge-nal-embassy` 0.9, `edge-dhcp` 0.8,
   `edge-captive` 0.8, workspace v0.16.0) instead of a pinned git revision of

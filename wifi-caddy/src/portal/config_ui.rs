@@ -20,7 +20,10 @@ use super::config_page::serve_config_page;
 use super::responses::{send_json, send_text};
 
 /// Buffer size for JSON config-group responses.
-const CONFIG_GROUP_JSON_BUF_SIZE: usize = 512;
+///
+/// Has to hold the JSON of one page: the page's fields plus their values, which
+/// are themselves bounded by `wifi_caddy::config_storage::MAX_VALUE_SIZE`.
+const CONFIG_GROUP_JSON_BUF_SIZE: usize = 384;
 
 /// HTTP request handler for the config UI.
 ///
@@ -65,6 +68,10 @@ impl<R: RawMutex + 'static, C: ConfigType + 'static, S: 'static> ConfigHandler<R
 }
 
 /// Extract the `set` query parameter value from a path like `/config-group/foo?set=...`.
+///
+/// The decoded value is bounded by the request head, which the HTTP server
+/// buffered before the handler ran, so the allocation cannot exceed
+/// `HTTP_BUF_SIZE`.
 fn parse_set_param(path: &str) -> Option<alloc::string::String> {
     let query = path.split_once('?')?.1;
     for pair in query.split('&') {
@@ -242,7 +249,6 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    use alloc::string::ToString;
 
     #[test]
     fn test_percent_decode_basic() {
@@ -269,13 +275,13 @@ mod tests {
     #[test]
     fn test_parse_set_param() {
         assert_eq!(
-            parse_set_param("/config-group/main?set=%7B%7D"),
-            Some("{}".to_string())
+            parse_set_param("/config-group/main?set=%7B%7D").as_deref(),
+            Some("{}")
         );
         assert_eq!(parse_set_param("/config-group/main"), None);
         assert_eq!(
-            parse_set_param("/config/field?other=1&set=hello"),
-            Some("hello".to_string())
+            parse_set_param("/config/field?other=1&set=hello").as_deref(),
+            Some("hello")
         );
     }
 

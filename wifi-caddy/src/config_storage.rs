@@ -34,7 +34,14 @@ impl fmt::Display for ConfigError {
 }
 
 /// Maximum size for a stored value (used by default implementations).
-pub const MAX_VALUE_SIZE: usize = 256;
+///
+/// Bounds the scratch buffers that the storage path uses, and with them the
+/// maximum serialized size of a single config value: a longer value fails with
+/// [`ConfigError::BufferTooSmall`]. The config fields this crate ships with fit
+/// easily (SSIDs are at most 32 bytes, passphrases 63), so the default is kept
+/// small; raise it — together with the storage backend's own buffer, which must
+/// be at least this large — if a config has long `String` fields.
+pub const MAX_VALUE_SIZE: usize = 128;
 
 /// Backend abstraction for config key-value storage.
 ///

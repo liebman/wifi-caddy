@@ -46,7 +46,16 @@ const _: () = {
 /// This limits the maximum serialized size of any single config value.
 /// If a `ConfigValue::to_bytes()` result exceeds this, the operation fails
 /// with `ConfigError::Backend`. Must be >= `wifi_caddy::config_storage::MAX_VALUE_SIZE`.
-const BUFFER_SIZE: usize = 256;
+const BUFFER_SIZE: usize = 128;
+
+/// `ConfigStorage::set_value` serializes into a `MAX_VALUE_SIZE` buffer before
+/// calling into this backend, so the backend's own buffer must not be smaller —
+/// otherwise a value that the config API accepts would be rejected here.
+///
+/// Uses `::core::assert!`: this crate's `fmt.rs` maps `assert!` to
+/// `defmt::assert!` when the `defmt` feature is on, which does not work in const
+/// context (same reason as the FNV golden-value assertions above).
+const _: () = ::core::assert!(BUFFER_SIZE >= MAX_VALUE_SIZE);
 
 /// Type-state marker: storage has not been mounted yet.
 pub struct Unmounted;

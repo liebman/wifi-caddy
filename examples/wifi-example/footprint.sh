@@ -11,6 +11,7 @@
 #   ./footprint.sh                    # report for the default chip (c6)
 #   ./footprint.sh --chip s3          # report for another chip
 #   ./footprint.sh --build            # build first (cargo build-<chip>)
+#   ./footprint.sh --portal           # one line: the portal's own RAM (for diffs)
 #
 # The report goes to stdout, so two runs (before/after a change) can be compared:
 #
@@ -27,11 +28,13 @@ set -eu
 
 CHIP=c6
 BUILD=0
+PORTAL=0
 
 while [ $# -gt 0 ]; do
     case "$1" in
         --chip) shift; CHIP="${1:-}" ;;
         --build) BUILD=1 ;;
+        --portal) PORTAL=1 ;;
         -h|--help) sed -n '2,25p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
         *) echo "footprint.sh: unknown argument '$1'" >&2; exit 2 ;;
     esac
@@ -102,6 +105,29 @@ if [ -n "$ELF_CHIP" ] && [ "$ELF_CHIP" != "$CHIPNAME" ]; then
     echo "WARNING: this ELF looks like an '$ELF_CHIP' build, but --chip $CHIP was given."
     echo "         One target directory can hold several chips' builds (c5/c6/c61 share"
     echo "         riscv32imac): run './footprint.sh --chip $CHIP --build' first."
+fi
+
+if [ "$PORTAL" = 1 ]; then
+    # One-line summary of the portal's own static RAM, for quick before/after
+    # diffs (and possible use as a CI budget).
+    "$NM" --print-size --size-sort --radix=d --demangle "$ELF" 2>/dev/null | awk -v chip="$CHIPNAME" '
+        {
+            if (NF < 4) next
+            size = $2 + 0
+            typ = tolower($3)
+            if (typ != "b" && typ != "d") next
+            if ($0 ~ /_config_http_worker::POOL/) http += size
+            else if ($0 ~ /serve_loop.*TCP_BUF/) tcp += size
+            else if ($0 ~ /portal::dhcp::run::POOL/) dhcp += size
+            else if ($0 ~ /portal::dns::run::POOL/) dns += size
+            else if ($0 ~ /esp_wifi_caddy::init.*STATIC_CELL/) sock += size
+        }
+        END {
+            printf "%-8s HTTP task pool %6d B | TCP buffers %6d B | DHCP %6d B | DNS %6d B | esp-wifi-caddy statics %6d B | portal total %6d B\n", \
+                chip, http, tcp, dhcp, dns, sock, http + tcp + dhcp + dns + sock
+        }
+    '
+    exit 0
 fi
 
 # One "name hexsize" pair per line, from the section header table.

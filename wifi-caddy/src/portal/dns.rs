@@ -12,9 +12,14 @@ use super::dhcp::AP_IP_ADDRESS;
 #[embassy_executor::task]
 pub async fn run(stack: Stack<'static>) {
     info!("dns: start DNS task");
-    let buffers = UdpBuffers::<1, 1500, 1500, 2>::new();
-    let mut tx_buf = [0; 1500];
-    let mut rx_buf = [0; 1500];
+    // Sizing: DNS queries are small — a stub resolver's query with an EDNS0 OPT
+    // record is ~50-80 bytes, because EDNS0 declares a larger *response* size
+    // rather than inflating the query — and our captive replies (question echoed
+    // plus one A record) are smaller still, so 512 bytes each way, the classic
+    // DNS-over-UDP limit, is ample.
+    let buffers = UdpBuffers::<1, 512, 512, 1>::new();
+    let mut tx_buf = [0; 512];
+    let mut rx_buf = [0; 512];
 
     let udp = Udp::new(stack, &buffers);
 
