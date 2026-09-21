@@ -44,9 +44,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   on an ESP32-C6 build. The values are exported as
   `esp_wifi_caddy::{AP_SOCKET_COUNT, STA_SOCKET_COUNT}`; applications that open
   more sockets than the default on either stack must raise the corresponding
-  variable. The AP stack also has to cover the config portal's
-  `WIFI_CADDY_HANDLER_TASKS` plus the DHCP and DNS servers, plus headroom —
-  the default of 8 covers the portal's default of 4 handlers.
+  variable. The AP stack also has to cover the config portal's *accepted*
+  connections (`WIFI_CADDY_ACCEPTOR_TASKS`, default 4) plus the DHCP and DNS
+  servers, plus headroom — the default of 8 covers the portal's default of 4
+  acceptors plus both servers.
 - `wifi-caddy` now depends on the released `edge-*` crates
   (`edge-http` 0.8, `edge-nal` 0.7, `edge-nal-embassy` 0.9, `edge-dhcp` 0.8,
   `edge-captive` 0.8, workspace v0.16.0) instead of a pinned git revision of

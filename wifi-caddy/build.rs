@@ -25,29 +25,33 @@ fn main() {
     // Defaults are chosen for small embedded targets, but with enough margin to
     // survive a phone:
     //
-    // * HANDLER_TASKS = 4: every handler costs one HTTP work buffer, one
-    //   connection future (~4.5 KiB) and one TCP buffer pair. With smoltcp (and
-    //   therefore embassy-net) there is no listen backlog — a listening socket
-    //   only exists while a task is parked in `accept()` — so a handler that is
-    //   busy serving a request (or stalled on a dead client, see
-    //   IO_TIMEOUT_MS) takes a listening socket out of the pool. iPhones open
-    //   several connections at once (a speculative pre-connect plus captive
-    //   portal probes), so 2 handlers proved too few on real hardware; 4 leaves
-    //   room to keep accepting.
+    // * HANDLER_TASKS = 2: the number of *workers*, i.e. requests served in
+    //   parallel. Each worker costs one HTTP work buffer plus a ~4.5 KiB
+    //   connection future (6,512 B measured on ESP32-C6). Parallelism is
+    //   deliberately kept low: the acceptor queue below absorbs connection bursts,
+    //   so extra workers buy throughput for simultaneous requests, not capacity.
+    // * ACCEPTOR_TASKS = 4: the number of *listeners*, i.e. how many connections
+    //   can be accepted (and queued for a worker) at once. smoltcp has no listen
+    //   backlog, so without these extra listeners any connection arriving while
+    //   every worker is busy would be reset — which is what broke the portal on an
+    //   iPhone. Each acceptor costs only ~312 B, so capacity is cheap and
+    //   parallelism is expensive: measured portal RAM on ESP32-C6 is 38.5 KiB at
+    //   2+4 versus 50.1 KiB for four self-listening workers with the same capacity.
     // * HTTP_BUF_SIZE = 2048 (edge-http's own default): the buffer only has to
     //   hold the request head; response bodies are streamed.
     // * TCP_BUF_SIZE = 1024 (edge-nal-embassy's own default), used for both the
     //   receive and the transmit buffer of each connection.
     // * HTTP_MAX_HEADERS = 32 (edge-http defaults to 64): each slot costs 16
     //   bytes inside every connection state.
-    // * IO_TIMEOUT_MS = 5000: bounds how long a connection can hold a handler
+    // * IO_TIMEOUT_MS = 5000: bounds how long a connection can hold a worker
     //   without any IO progress.
-    let handler_tasks = env_or("WIFI_CADDY_HANDLER_TASKS", "4");
+    let handler_tasks = env_or("WIFI_CADDY_HANDLER_TASKS", "2");
     let tcp_buf_size = env_or("WIFI_CADDY_TCP_BUF_SIZE", "1024");
     let http_buf_size = env_or("WIFI_CADDY_HTTP_BUF_SIZE", "2048");
     let keepalive_ms = env_or("WIFI_CADDY_KEEPALIVE_TIMEOUT_MS", "3000");
     let http_max_headers = env_or("WIFI_CADDY_HTTP_MAX_HEADERS", "32");
     let io_timeout_ms = env_or("WIFI_CADDY_IO_TIMEOUT_MS", "5000");
+    let acceptor_tasks = env_or("WIFI_CADDY_ACCEPTOR_TASKS", "4");
 
     validate_usize("WIFI_CADDY_HANDLER_TASKS", &handler_tasks);
     validate_usize("WIFI_CADDY_TCP_BUF_SIZE", &tcp_buf_size);
@@ -55,6 +59,20 @@ fn main() {
     validate_u32("WIFI_CADDY_KEEPALIVE_TIMEOUT_MS", &keepalive_ms);
     validate_usize("WIFI_CADDY_HTTP_MAX_HEADERS", &http_max_headers);
     validate_u32("WIFI_CADDY_IO_TIMEOUT_MS", &io_timeout_ms);
+    validate_usize("WIFI_CADDY_ACCEPTOR_TASKS", &acceptor_tasks);
+
+    // The socket-queue layout keeps exactly `ACCEPTOR_TASKS` sockets alive at any
+    // time (in the stack, waiting in the queue, or being served), so a queue with
+    // fewer acceptors than workers could never keep every worker fed, and the TCP
+    // buffer pool (sized with `ACCEPTOR_TASKS`) must hold them all.
+    let handler_count: usize = handler_tasks.parse().unwrap();
+    let acceptor_count: usize = acceptor_tasks.parse().unwrap();
+    assert!(
+        acceptor_count >= handler_count,
+        "wifi-caddy build.rs: WIFI_CADDY_ACCEPTOR_TASKS ({acceptor_count}) must be >= \
+         WIFI_CADDY_HANDLER_TASKS ({handler_count}) — the acceptor queue is what keeps \
+         connections from being reset while every worker is busy."
+    );
 
     let out = std::path::Path::new(&std::env::var("OUT_DIR").unwrap()).join("server_tuning.rs");
 
@@ -110,7 +128,20 @@ fn main() {
              /// further connections are reset, which is what took the portal down on an\n\
              /// iPhone when this was missing.\n\
              /// Override with env var `WIFI_CADDY_IO_TIMEOUT_MS` (default 5000).\n\
-             pub const IO_TIMEOUT_MS: u32 = {io_timeout_ms};\n"
+             pub const IO_TIMEOUT_MS: u32 = {io_timeout_ms};\n\
+             \n\
+             /// Number of acceptor tasks in the HTTP server's socket queue.\n\
+             ///\n\
+             /// `serve_loop` runs `HANDLER_TASKS` workers fed from a queue of accepted\n\
+             /// connections maintained by this many acceptor tasks. Because smoltcp has no\n\
+             /// listen backlog, the alternative (each worker listening itself, i.e.\n\
+             /// `Server::run`) resets any connection that arrives while every worker is\n\
+             /// busy; with the queue such a connection is accepted and waits instead. The\n\
+             /// number of sockets alive at any time is exactly this value (in the stack,\n\
+             /// queued for a worker, or being served), so it also sizes the TCP buffer\n\
+             /// pool and must be >= `HANDLER_TASKS`.\n\
+             /// Override with env var `WIFI_CADDY_ACCEPTOR_TASKS` (default 4).\n\
+             pub const ACCEPTOR_TASKS: usize = {acceptor_tasks};\n"
         ),
     )
     .unwrap();

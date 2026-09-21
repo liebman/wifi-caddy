@@ -293,18 +293,21 @@ config portal reserve. Both are read by build scripts, so set them in `[env]` in
 | --- | --- | --- |
 | `ESP_WIFI_CADDY_AP_SOCKETS` | `8` | Sockets on the access-point stack (`StackResources<N>`) |
 | `ESP_WIFI_CADDY_STA_SOCKETS` | `4` | Sockets on the station stack |
-| `WIFI_CADDY_HANDLER_TASKS` | `4` | Concurrent HTTP config-portal connections |
+| `WIFI_CADDY_HANDLER_TASKS` | `2` | HTTP workers (requests served in parallel) |
+| `WIFI_CADDY_ACCEPTOR_TASKS` | `4` | HTTP acceptors (connections accepted at once) |
 | `WIFI_CADDY_HTTP_BUF_SIZE` | `2048` | Per-connection HTTP work buffer (bytes) |
 | `WIFI_CADDY_TCP_BUF_SIZE` | `1024` | Per-connection TCP receive *and* transmit buffer (bytes) |
 | `WIFI_CADDY_HTTP_MAX_HEADERS` | `32` | Request headers parsed per connection |
 | `WIFI_CADDY_IO_TIMEOUT_MS` | `5000` | Idle read/write timeout per connection (ms) |
 
-Every socket slot costs 352 bytes plus a fixed per-stack overhead, and every HTTP
-handler costs its buffers plus a ~4.5 KiB connection future, so these values
-dominate the portal's static RAM. The AP stack has to cover
-`WIFI_CADDY_HANDLER_TASKS` plus the DHCP server and the captive DNS server, plus
-headroom for clients that are connected but not yet being served; the STA stack
-only needs the DHCP client plus whatever the application opens.
+Every socket slot costs 352 bytes plus a fixed per-stack overhead, an HTTP worker
+costs 6,512 bytes (a work buffer plus a connection future) and an HTTP acceptor
+only ~312 bytes, so these values dominate the portal's static RAM: with the
+defaults the whole portal is ~38 KiB on ESP32-C6. The AP stack has to cover the
+portal's *accepted* connections (`WIFI_CADDY_ACCEPTOR_TASKS`) plus the DHCP server
+and the captive DNS server, plus headroom for clients that are connected but not
+yet being served; the STA stack only needs the DHCP client plus whatever the
+application opens.
 
 The values are readable in code as `esp_wifi_caddy::AP_SOCKET_COUNT` /
 `STA_SOCKET_COUNT` and `wifi_caddy::portal::{HANDLER_TASKS, HTTP_BUF_SIZE,

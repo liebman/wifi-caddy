@@ -178,14 +178,15 @@ It prints the section totals (flash vs DRAM), the largest RAM statics and a
 per-crate text/rodata attribution. Two things to know when reading it:
 
 - **RAM is dominated by static buffers, not code.** On ESP32-C6 (`log` features,
-  release) the portal's static RAM is now about 49 KB (down from 80 KB): the HTTP
-  task's embassy task pool (26,312 B — `Server<4, 2048, 32>`, i.e. four 2 KiB HTTP
-  buffers plus the four pinned connection futures), the TCP buffer pool (8,197 B —
-  `TcpBuffers<4, 1024, 1024>`), the DHCP and DNS tasks (5,264 B + 2,408 B, down
-  from 7,152 + 6,392 with 1500-byte UDP buffers) and the `StackResources` pair
-  (7,664 B, down from 10,480 with 10 sockets per stack). The earlier tuning (4 KiB
-  HTTP buffers, 2 KiB TCP buffers, 64 header slots, no IO timeout) put the HTTP pool
-  at 41,600 B and the TCP pool at 16,389 B.
+  release) the portal's static RAM is now about 38 KB (down from 80 KB): the HTTP
+  server's task pool (14,672 B — two worker tasks fed from a four-slot accept
+  queue, i.e. `Server<2, 2048, 32>` with `run_with_socket_queue::<4>`), the TCP
+  buffer pool (8,197 B — `TcpBuffers<4, 1024, 1024>`, one pair per accepted
+  connection), the DHCP and DNS tasks (5,264 B + 2,408 B, down from 7,152 + 6,392
+  with 1500-byte UDP buffers) and the `StackResources` pair (7,664 B, down from
+  10,480 with 10 sockets per stack). The original tuning (four self-listening
+  workers, 4 KiB HTTP buffers, 2 KiB TCP buffers, 64 header slots, no IO timeout)
+  spent 41,600 + 16,389 B on those two pools plus 10,480 B on the socket resources.
 - **The C5/C6/C61 aliases share one target directory**, so the ELF in it is
   whatever was linked last. The report prints the chip it detects *inside* the
   ELF and warns when that does not match `--chip`; use `--build` when in doubt.
@@ -196,22 +197,27 @@ by build scripts, so set them in the `[env]` section of `.cargo/config.toml`
 
 | variable | default | effect |
 | --- | --- | --- |
-| `WIFI_CADDY_HANDLER_TASKS` | 4 | concurrent HTTP connections; each costs one work buffer, one ~4.5 KiB connection future and one TCP buffer pair |
+| `WIFI_CADDY_HANDLER_TASKS` | 2 | worker tasks = requests served in parallel; each costs a work buffer (~2 KiB) plus a ~4.5 KiB connection future (6,512 B measured) |
+| `WIFI_CADDY_ACCEPTOR_TASKS` | 4 | acceptor tasks = how many connections can be accepted at once; each costs ~312 B. Must be >= `WIFI_CADDY_HANDLER_TASKS`; the TCP pool and the AP socket count are sized with it |
 | `WIFI_CADDY_HTTP_BUF_SIZE` | 2048 | per-connection HTTP work buffer (only has to hold the request head) |
 | `WIFI_CADDY_TCP_BUF_SIZE` | 1024 | per-connection TCP receive *and* transmit buffer size |
 | `WIFI_CADDY_HTTP_MAX_HEADERS` | 32 | request headers parsed per connection (16 bytes each, per connection) |
-| `WIFI_CADDY_IO_TIMEOUT_MS` | 5000 | idle read/write timeout per connection; without it a stalled client pins a handler forever |
+| `WIFI_CADDY_IO_TIMEOUT_MS` | 5000 | idle read/write timeout per connection; without it a stalled client pins a worker forever |
 | `WIFI_CADDY_KEEPALIVE_TIMEOUT_MS` | 3000 | idle keepalive timeout |
 | `ESP_WIFI_CADDY_AP_SOCKETS` | 8 | sockets on the AP stack (`StackResources<N>`), 352 B + fixed overhead each |
 | `ESP_WIFI_CADDY_STA_SOCKETS` | 4 | sockets on the STA stack |
 
-Keep `WIFI_CADDY_HANDLER_TASKS` at 4 unless you have tested otherwise: smoltcp has
-no listen backlog, so a listening socket only exists while a handler is parked in
-`accept()` — every handler that is busy (or stalled, see `WIFI_CADDY_IO_TIMEOUT_MS`)
-is one less listener, and an iPhone opens several connections at once. At
-`HANDLER_TASKS=2` one stalled connection took the portal down on an iPhone.
-`ESP_WIFI_CADDY_AP_SOCKETS` has to cover `WIFI_CADDY_HANDLER_TASKS` plus the DHCP
-and DNS servers, plus headroom.
+**Why there are two counts.** smoltcp has no listen backlog, so with the naive
+layout (each worker listening for itself) the number of listening sockets equals
+the number of *idle* workers, and a connection arriving while every worker is busy
+is reset — one stalled connection was enough to take the portal down on an iPhone.
+`edge-http`'s socket-queue mode separates the two roles: `WIFI_CADDY_ACCEPTOR_TASKS`
+acceptors keep feeding a queue of accepted connections to `WIFI_CADDY_HANDLER_TASKS`
+workers, so a burst is accepted and waits instead of being reset. Capacity (Q) is
+cheap and parallelism (P) is expensive, so the defaults are `2 + 4`: the same
+capacity as four self-listening workers for ~11.6 KiB less RAM, with two
+connections able to wait in the queue. `ESP_WIFI_CADDY_AP_SOCKETS` has to cover
+`WIFI_CADDY_ACCEPTOR_TASKS` plus the DHCP and DNS servers, plus headroom.
 
 Because the connection future nests the TCP, timeout and HTTP state machines, the
 application needs a higher type-layout recursion limit — `src/main.rs` starts with

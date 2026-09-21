@@ -82,22 +82,30 @@ DEFMT_LOG = "info"
 # Memory profile for the HTTP config portal (read by wifi-caddy's build script,
 # so it applies to the wifi-caddy build in this target directory). These are the
 # wifi-caddy defaults; they are spelled out here so the example's footprint is
-# explicit and does not drift if the defaults change. Each handler task costs an
-# HTTP buffer, a ~4.5 KiB connection future and a TCP buffer pair, so
-# WIFI_CADDY_HANDLER_TASKS is the biggest lever — but keep it at 4 unless you have
-# tested otherwise: smoltcp has no listen backlog, so every handler that is busy
-# (or stalled on a dead client) is one less listening socket, and an iPhone opens
-# several connections at once. 2 was measured to be too few on real iPhone
-# captive-portal traffic.
-WIFI_CADDY_HANDLER_TASKS = "4"     # concurrent HTTP connections (2 = smallest, 4 = default)
+# explicit and does not drift if the defaults change.
+#
+# The portal serves requests with WIFI_CADDY_HANDLER_TASKS worker tasks, fed from a
+# queue of accepted connections maintained by WIFI_CADDY_ACCEPTOR_TASKS acceptor
+# tasks. A worker costs ~6,512 B (HTTP buffer + connection future), an acceptor only
+# ~312 B — so acceptors buy connection *capacity* cheaply, while workers buy
+# *parallelism* expensively. smoltcp has no listen backlog, which is why the
+# capacity (Q) must exceed the worker count (P): a connection arriving while every
+# worker is busy is accepted and queued instead of being reset (the iPhone bug).
+#   2 + 4  -> 38,457 B portal RAM, capacity 4, queue depth 2   (default)
+#   1 + 4  -> 31,945 B, capacity 4, queue depth 3              (smallest sensible)
+#   2 + 6  -> 43,179 B, capacity 6, queue depth 4              (more margin)
+#   4 + 4  -> 51,481 B, capacity 4, queue depth 0
+# (all ESP32-C6, log, release; add DHCP 5,264 + DNS 2,408 + WiFi statics 7,916)
+WIFI_CADDY_HANDLER_TASKS = "2"     # worker tasks (parallel requests)
+WIFI_CADDY_ACCEPTOR_TASKS = "4"    # acceptor tasks (connection capacity), >= workers
 WIFI_CADDY_HTTP_BUF_SIZE = "2048"  # per-connection request-head buffer (was 4096)
 WIFI_CADDY_TCP_BUF_SIZE = "1024"   # per-connection TCP rx/tx buffer (was 2048)
 WIFI_CADDY_HTTP_MAX_HEADERS = "32" # parsed request headers per connection (was 64)
 WIFI_CADDY_IO_TIMEOUT_MS = "5000"  # idle IO timeout per connection (no timeout before)
 # WIFI_CADDY_KEEPALIVE_TIMEOUT_MS = "3000"
 
-# Socket counts per network stack. The AP stack has to cover the portal's
-# concurrent connections (WIFI_CADDY_HANDLER_TASKS) plus the DHCP and DNS servers
-# plus headroom; every slot costs ~352 bytes.
+# Socket counts per network stack. The AP stack has to cover the acceptor capacity
+# (WIFI_CADDY_ACCEPTOR_TASKS) plus the DHCP and DNS servers plus headroom; every
+# slot costs ~352 bytes.
 ESP_WIFI_CADDY_AP_SOCKETS = "8"
 ESP_WIFI_CADDY_STA_SOCKETS = "4"
