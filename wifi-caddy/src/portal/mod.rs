@@ -14,6 +14,7 @@ use core::net::{Ipv4Addr, SocketAddr, SocketAddrV4};
 
 use edge_http::io::server::{Handler, Server};
 use edge_nal::TcpBind;
+use edge_nal::WithTimeout;
 use edge_nal_embassy::{Tcp, TcpBuffers};
 use embassy_executor::Spawner;
 use embassy_net::Stack;
@@ -27,20 +28,33 @@ const TCP_BIND_RETRY_DELAY_MS: u64 = 2000;
 /// Run the edge-http server on the given stack with the provided handler.
 ///
 /// Creates TCP buffers, binds to port 80 (retrying with a delay if bind fails),
-/// and runs the server with `HANDLER_TASKS` concurrent connection handlers.
-/// Does not return.
+/// and runs the server with `HANDLER_TASKS` worker tasks fed from a socket queue
+/// maintained by `ACCEPTOR_TASKS` acceptor tasks. Does not return.
 ///
-/// Connection keepalive is enforced by edge-http's `Server::run`. Per-request
-/// timeouts (if desired) should be handled inside the `Handler` implementation.
+/// The queue is what makes the portal robust on smoltcp: it has no listen
+/// backlog, so with the simpler per-worker `Server::run` layout the number of
+/// listening sockets equals the number of *idle* workers, and a connection that
+/// arrives while every worker serves a request is reset. With the queue a burst
+/// of up to `ACCEPTOR_TASKS` connections is accepted (and waits for a worker)
+/// instead — which is what an iPhone's speculative pre-connect plus captive
+/// portal probes need.
+///
+/// Connection keepalive is enforced by edge-http's server loop. Per-IO timeouts
+/// are applied through the `WithTimeout` wrapper below.
 pub async fn serve_loop<H: Handler>(stack: Stack<'static>, handler: H) -> ! {
     debug!("serve_loop: HANDLER_TASKS = {}", HANDLER_TASKS);
+    debug!("serve_loop: ACCEPTOR_TASKS = {}", ACCEPTOR_TASKS);
     debug!("serve_loop: TCP_BUF_SIZE = {}", TCP_BUF_SIZE);
     debug!("serve_loop: HTTP_BUF_SIZE = {}", HTTP_BUF_SIZE);
+    debug!("serve_loop: HTTP_MAX_HEADERS = {}", HTTP_MAX_HEADERS);
     debug!(
         "serve_loop: KEEPALIVE_TIMEOUT_MS = {}",
         KEEPALIVE_TIMEOUT_MS
     );
-    static TCP_BUF: StaticCell<TcpBuffers<{ HANDLER_TASKS }, { TCP_BUF_SIZE }, { TCP_BUF_SIZE }>> =
+    debug!("serve_loop: IO_TIMEOUT_MS = {}", IO_TIMEOUT_MS);
+    // One buffer pair per acceptor: the server keeps exactly `ACCEPTOR_TASKS`
+    // sockets alive (accepting, queued, or being served), and each holds a pair.
+    static TCP_BUF: StaticCell<TcpBuffers<{ ACCEPTOR_TASKS }, { TCP_BUF_SIZE }, { TCP_BUF_SIZE }>> =
         StaticCell::new();
     let tcp_buffers = TCP_BUF.uninit().write(TcpBuffers::new());
     let tcp = Tcp::new(stack, tcp_buffers);
@@ -64,9 +78,24 @@ pub async fn serve_loop<H: Handler>(stack: Stack<'static>, handler: H) -> ! {
         }
     };
 
-    let mut server = Server::<{ HANDLER_TASKS }, { HTTP_BUF_SIZE }>::new();
+    // Bound the IO of every accepted connection. `edge-http` deliberately installs
+    // no IO timeouts of its own, and a handler task holds its TCP socket (one slot
+    // of the buffer pool above) and its HTTP buffer for the whole connection: a
+    // client that connects and then stalls — a browser's speculative pre-connect,
+    // a phone that dropped off the AP — would otherwise pin that handler
+    // indefinitely. Since smoltcp has no listen backlog, a pinned handler also
+    // means one fewer listening socket, and once all handlers are pinned the
+    // portal resets every new connection. With this timeout a stalled connection
+    // is dropped and the handler returns to `accept()`.
+    let acceptor = WithTimeout::new(IO_TIMEOUT_MS, acceptor);
+
+    let mut server = Server::<{ HANDLER_TASKS }, { HTTP_BUF_SIZE }, { HTTP_MAX_HEADERS }>::new();
     match server
-        .run(Some(KEEPALIVE_TIMEOUT_MS), acceptor, handler)
+        .run_with_socket_queue::<_, _, { ACCEPTOR_TASKS }>(
+            Some(KEEPALIVE_TIMEOUT_MS),
+            acceptor,
+            handler,
+        )
         .await
     {
         Ok(()) => error!("http: server exited unexpectedly"),
@@ -104,7 +133,11 @@ pub async fn serve_loop_debug<H: Handler>(stack: Stack<'static>, handler: H) -> 
         }
     };
 
-    let mut server = Server::<1, { HTTP_BUF_SIZE }>::new();
+    // Same IO timeout as `serve_loop` (see the note there): the debug server runs
+    // a single handler, so a stalled connection would take the server down.
+    let acceptor = WithTimeout::new(IO_TIMEOUT_MS, acceptor);
+
+    let mut server = Server::<1, { HTTP_BUF_SIZE }, { HTTP_MAX_HEADERS }>::new();
     match server
         .run(Some(KEEPALIVE_TIMEOUT_MS), acceptor, handler)
         .await

@@ -1,0 +1,14 @@
+# ESP32-C6 (riscv32imac). Used through the `clippy-c6` / `build-c6` / `run-c6`
+# aliases:
+#
+#   cargo build-c6
+#   (= cargo build --config .cargo/config-c6.toml --release --features esp32c6)
+
+[build]
+target = "riscv32imac-unknown-none-elf"
+
+[target.riscv32imac-unknown-none-elf]
+runner = "espflash flash --chip esp32c6 --monitor"
+rustflags = [
+  "-C", "link-arg=-Tlinkall.x",
+]

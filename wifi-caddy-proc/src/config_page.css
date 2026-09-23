@@ -196,6 +196,12 @@ button[type="button"]:hover {
 .config-tab:hover {
     background: #e0e0e0;
 }
+/* Unsaved-changes marker: a dot after the label, toggled by the tab script.
+   Uses button.config-tab for specificity so it also shows on the active tab. */
+button.config-tab.dirty::after {
+    content: " \2022";
+    color: #ff9800;
+}
 /* Higher specificity so active state wins over button[type="button"] and :hover */
 button.config-tab.active,
 button.config-tab.active:hover {

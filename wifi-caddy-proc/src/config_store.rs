@@ -1,5 +1,6 @@
 //! Config storage codegen for `WifiCaddyConfig`: keys, load/store, accessors.
 
+use crate::paths::CratePaths;
 use crate::utils::{
     FORMAT_VERSION_KEY, MAGIC_KEY, bump_stmt, consume_meta_value, fnv1a_hash, try_parse_lit_str,
     variant_ident_for_field,
@@ -165,15 +166,19 @@ fn gen_key_enum(keys: &[KeyInfo]) -> TokenStream {
 // Phase 4 – getters and setters
 // ---------------------------------------------------------------------------
 
-fn gen_accessors(fields: &[StoreField]) -> (Vec<TokenStream>, Vec<TokenStream>) {
+fn gen_accessors(
+    fields: &[StoreField],
+    paths: &CratePaths,
+) -> (Vec<TokenStream>, Vec<TokenStream>) {
+    let wifi_caddy = &paths.wifi_caddy;
     let getters = fields
         .iter()
         .map(|f| {
             let ident = &f.ident;
             let ty = &f.ty;
             quote! {
-                pub fn #ident(&self) -> <#ty as wifi_caddy::config_storage::ConfigValue>::Getter<'_> {
-                    wifi_caddy::config_storage::ConfigValue::to_getter(&self.#ident)
+                pub fn #ident(&self) -> <#ty as #wifi_caddy::config_storage::ConfigValue>::Getter<'_> {
+                    #wifi_caddy::config_storage::ConfigValue::to_getter(&self.#ident)
                 }
             }
         })
@@ -356,8 +361,9 @@ fn gen_store_calls(fields: &[StoreField]) -> Vec<TokenStream> {
 /// #[config_store(bump = "config_version")]
 /// some_option: u32,
 /// ```
-pub fn derive_config_store_impl(input: &DeriveInput) -> TokenStream {
+pub fn derive_config_store_impl(input: &DeriveInput, paths: &CratePaths) -> TokenStream {
     let name = &input.ident;
+    let wifi_caddy = &paths.wifi_caddy;
 
     let syn::Data::Struct(data) = &input.data else {
         return syn::Error::new_spanned(input, "ConfigStore only supports structs")
@@ -377,7 +383,7 @@ pub fn derive_config_store_impl(input: &DeriveInput) -> TokenStream {
 
     let collision_check = gen_collision_check(&all_hashes, &all_names);
     let key_enum = gen_key_enum(&keys);
-    let (getters, setters) = gen_accessors(&fields);
+    let (getters, setters) = gen_accessors(&fields, paths);
     let (get_str_arms, set_str_arms) = gen_str_arms(&fields);
     let (get_key_arms, set_key_arms) = gen_key_arms(&fields);
     let load_calls = gen_load_calls(&fields);
@@ -397,7 +403,7 @@ pub fn derive_config_store_impl(input: &DeriveInput) -> TokenStream {
             #(#setters)*
 
             pub fn get(&self, key: &str) -> Option<alloc::string::String> {
-                <Self as wifi_caddy::config_storage::ConfigGet>::get(self, key)
+                <Self as #wifi_caddy::config_storage::ConfigGet>::get(self, key)
             }
 
             pub fn set(&mut self, key: &str, value: &str) -> bool {
@@ -422,7 +428,7 @@ pub fn derive_config_store_impl(input: &DeriveInput) -> TokenStream {
             }
         }
 
-        impl wifi_caddy::config_storage::ConfigGet for #name {
+        impl #wifi_caddy::config_storage::ConfigGet for #name {
             fn get(&self, key: &str) -> Option<alloc::string::String> {
                 match key {
                     #(#get_str_arms),*,
@@ -431,19 +437,19 @@ pub fn derive_config_store_impl(input: &DeriveInput) -> TokenStream {
             }
         }
 
-        impl wifi_caddy::config_storage::ConfigLoadStore for #name {
-            async fn load_from<S: wifi_caddy::config_storage::ConfigStorage>(
+        impl #wifi_caddy::config_storage::ConfigLoadStore for #name {
+            async fn load_from<S: #wifi_caddy::config_storage::ConfigStorage>(
                 storage: &mut S,
-            ) -> Result<Self, wifi_caddy::config_storage::ConfigError> {
+            ) -> Result<Self, #wifi_caddy::config_storage::ConfigError> {
                 let mut config = #name::default();
                 #(#load_calls)*
                 Ok(config)
             }
 
-            async fn store_to<S: wifi_caddy::config_storage::ConfigStorage>(
+            async fn store_to<S: #wifi_caddy::config_storage::ConfigStorage>(
                 &self,
                 storage: &mut S,
-            ) -> Result<(), wifi_caddy::config_storage::ConfigError> {
+            ) -> Result<(), #wifi_caddy::config_storage::ConfigError> {
                 #(#store_calls)*
                 Ok(())
             }

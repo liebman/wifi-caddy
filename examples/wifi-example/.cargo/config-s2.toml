@@ -1,0 +1,23 @@
+# ESP32-S2 (xtensa). Used through the `clippy-s2` / `build-s2` / `run-s2` aliases
+# (commented out in config.toml — see "Chip notes" in README.md):
+#
+#   cargo build-s2
+#   (= cargo build --config .cargo/config-s2.toml --release --features esp32s2)
+
+[build]
+target = "xtensa-esp32s2-none-elf"
+
+[target.xtensa-esp32s2-none-elf]
+runner = "espflash flash --chip esp32s2 --monitor"
+rustflags = [
+  "-C", "link-arg=-nostartfiles",
+  "-C", "link-arg=-Tlinkall.x",
+]
+
+[env]
+# The WiFi blobs plus the demo's heaps leave less than the 8 KB main stack esp-hal
+# requires in the S2's DRAM. Dropping the data cache frees 8 KB and makes the
+# build link (esp-hal supports `0KB` on the S2, and the freed cache SRAM becomes
+# usable DRAM), but it also disables the data cache — so it stays commented until
+# that has been verified on hardware.
+# ESP_HAL_CONFIG_DATA_CACHE_SIZE = "0KB"

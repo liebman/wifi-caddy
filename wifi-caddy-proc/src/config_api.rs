@@ -1,6 +1,7 @@
 //! Group API and notify codegen for `WifiCaddyConfig`: JSON get/set, `ConfigServer` + update channel, statics.
 
 use crate::field_attrs::{ParsedFormAttrs, parse_config_form_attr_into};
+use crate::paths::CratePaths;
 use crate::utils::{consume_meta_value, to_pascal_case, try_parse_lit_int, try_parse_lit_str};
 use proc_macro2::TokenStream;
 use quote::{format_ident, quote};
@@ -180,7 +181,12 @@ fn gen_config_change_enum(pages: &[(String, Vec<ApiField>)]) -> TokenStream {
 fn gen_dto_and_group_arms(
     name: &syn::Ident,
     pages: &[(String, Vec<ApiField>)],
+    paths: &CratePaths,
 ) -> (Vec<TokenStream>, Vec<TokenStream>, Vec<TokenStream>) {
+    let serde = &paths.serde;
+    let serde_crate_attr = &paths.serde_crate_attr;
+    let serde_json_core = &paths.serde_json_core;
+    let wifi_caddy = &paths.wifi_caddy;
     let mut dto_structs = Vec::new();
     let mut get_arms = Vec::new();
     let mut set_arms = Vec::new();
@@ -203,7 +209,8 @@ fn gen_dto_and_group_arms(
         );
         dto_structs.push(quote! {
             #[doc = #dto_doc]
-            #[derive(serde::Serialize, serde::Deserialize)]
+            #[derive(#serde::Serialize, #serde::Deserialize)]
+            #serde_crate_attr
             pub struct #dto_name {
                 #(#dto_fields),*
             }
@@ -221,8 +228,8 @@ fn gen_dto_and_group_arms(
         get_arms.push(quote! {
             #page_lit => {
                 let dto = #dto_name { #(#get_dto_fields),* };
-                let len = serde_json_core::to_slice(&dto, buf)
-                    .map_err(|_| wifi_caddy::config_storage::ConfigError::InvalidData)?;
+                let len = #serde_json_core::to_slice(&dto, buf)
+                    .map_err(|_| #wifi_caddy::config_storage::ConfigError::InvalidData)?;
                 Ok(len)
             }
         });
@@ -261,8 +268,8 @@ fn gen_dto_and_group_arms(
 
         set_arms.push(quote! {
             #page_lit => {
-                let (dto, _) = serde_json_core::from_str::<#dto_name>(json)
-                    .map_err(|_| wifi_caddy::config_storage::ConfigError::InvalidData)?;
+                let (dto, _) = #serde_json_core::from_str::<#dto_name>(json)
+                    .map_err(|_| #wifi_caddy::config_storage::ConfigError::InvalidData)?;
                 let mut changed = enumset::EnumSet::<ConfigChange>::new();
                 #(#set_compare_apply)*
                 Ok(changed)
@@ -277,7 +284,8 @@ fn gen_dto_and_group_arms(
 // Phase 5 – set_field arms (single key=value from HTTP query string)
 // ---------------------------------------------------------------------------
 
-fn gen_set_field_arms(pages: &[(String, Vec<ApiField>)]) -> Vec<TokenStream> {
+fn gen_set_field_arms(pages: &[(String, Vec<ApiField>)], paths: &CratePaths) -> Vec<TokenStream> {
+    let wifi_caddy = &paths.wifi_caddy;
     pages
         .iter()
         .flat_map(|(_, fields)| fields.iter())
@@ -301,7 +309,7 @@ fn gen_set_field_arms(pages: &[(String, Vec<ApiField>)]) -> Vec<TokenStream> {
                         Ok(Some(enumset::EnumSet::new()))
                     }
                 } else {
-                    Err(wifi_caddy::config_storage::ConfigError::InvalidData)
+                    Err(#wifi_caddy::config_storage::ConfigError::InvalidData)
                 }
             };
 
@@ -329,19 +337,21 @@ fn gen_set_field_arms(pages: &[(String, Vec<ApiField>)]) -> Vec<TokenStream> {
 // Phase 6 – notify channel (Channel + helper fns)
 // ---------------------------------------------------------------------------
 
-fn gen_notify_channel(attrs: &StructAttrs, num_pages: usize) -> TokenStream {
+fn gen_notify_channel(attrs: &StructAttrs, num_pages: usize, paths: &CratePaths) -> TokenStream {
+    let embassy_sync = &paths.embassy_sync;
+    let static_cell = &paths.static_cell;
     let cap_val = attrs.notify_cap.unwrap_or(num_pages);
     let cap_lit = proc_macro2::Literal::usize_unsuffixed(cap_val);
 
     quote! {
-        type ConfigUpdateChannel = embassy_sync::channel::Channel<
-            embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex,
+        type ConfigUpdateChannel = #embassy_sync::channel::Channel<
+            #embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex,
             enumset::EnumSet<ConfigChange>,
             #cap_lit,
         >;
         pub type ConfigUpdateReceiver = &'static ConfigUpdateChannel;
-        static CONFIG_UPDATE_CHANNEL: static_cell::StaticCell<ConfigUpdateChannel> =
-            static_cell::StaticCell::new();
+        static CONFIG_UPDATE_CHANNEL: #static_cell::StaticCell<ConfigUpdateChannel> =
+            #static_cell::StaticCell::new();
     }
 }
 
@@ -353,18 +363,21 @@ fn gen_config_server_impl(
     name: &syn::Ident,
     attrs: &StructAttrs,
     init_notify_body: &TokenStream,
+    paths: &CratePaths,
 ) -> TokenStream {
+    let wifi_caddy = &paths.wifi_caddy;
+    let embassy_sync = &paths.embassy_sync;
     let storage_magic_val = attrs.storage_magic.unwrap_or(0x4255_aa42);
     let storage_version_val = attrs.storage_version.unwrap_or(1);
     let storage_magic_lit = proc_macro2::Literal::u32_unsuffixed(storage_magic_val);
     let storage_version_lit = proc_macro2::Literal::u32_unsuffixed(storage_version_val);
 
     quote! {
-        impl wifi_caddy::config_storage::ConfigServer for #name {
+        impl #wifi_caddy::config_storage::ConfigServer for #name {
             type UpdateReceiver = ConfigUpdateReceiver;
 
-            fn storage_params() -> wifi_caddy::ConfigStorageParams {
-                wifi_caddy::ConfigStorageParams {
+            fn storage_params() -> #wifi_caddy::ConfigStorageParams {
+                #wifi_caddy::ConfigStorageParams {
                     magic: #storage_magic_lit,
                     format_version: #storage_version_lit,
                 }
@@ -372,9 +385,9 @@ fn gen_config_server_impl(
 
             fn init_notify() -> (
                 Self::UpdateReceiver,
-                embassy_sync::channel::DynamicSender<
+                #embassy_sync::channel::DynamicSender<
                     'static,
-                    <Self as wifi_caddy::config_storage::ConfigApi>::ChangedSet,
+                    <Self as #wifi_caddy::config_storage::ConfigApi>::ChangedSet,
                 >,
             ) {
                 #init_notify_body
@@ -398,11 +411,14 @@ fn gen_config_server_impl(
 /// Emits: per-page DTOs (e.g. `AppConfigMainPageDto` for struct `AppConfig` and page `main`) for JSON, `ConfigChange` enum, `ConfigApi` impl;
 /// channel types; `impl ConfigServer` with storage params and `init_notify`. Opt-out is not supported.
 ///
-/// All generated code references only `wifi_caddy::*` — no platform-specific types.
+/// All generated code references only the resolved core-crate paths (see
+/// [`crate::paths`]) — no platform-specific types.
 /// Platform crates (e.g. `esp-wifi-caddy`) use the `ConfigServer` trait to access
 /// storage params and the notify channel via `init_notify`.
-pub fn derive_config_api_impl(input: &DeriveInput) -> TokenStream {
+pub fn derive_config_api_impl(input: &DeriveInput, paths: &CratePaths) -> TokenStream {
     let name = &input.ident;
+    let wifi_caddy = &paths.wifi_caddy;
+    let embassy_sync = &paths.embassy_sync;
 
     let syn::Data::Struct(data) = &input.data else {
         return syn::Error::new_spanned(input, "ConfigApi only supports structs")
@@ -424,27 +440,27 @@ pub fn derive_config_api_impl(input: &DeriveInput) -> TokenStream {
     }
 
     let config_change_enum = gen_config_change_enum(&pages);
-    let (dto_structs, get_arms, set_arms) = gen_dto_and_group_arms(name, &pages);
-    let set_field_arms = gen_set_field_arms(&pages);
-    let notify_channel_block = gen_notify_channel(&attrs, pages.len());
+    let (dto_structs, get_arms, set_arms) = gen_dto_and_group_arms(name, &pages, paths);
+    let set_field_arms = gen_set_field_arms(&pages, paths);
+    let notify_channel_block = gen_notify_channel(&attrs, pages.len(), paths);
 
     let init_notify_body = quote! {
         let ch = CONFIG_UPDATE_CHANNEL.init(ConfigUpdateChannel::new());
-        let sender = embassy_sync::channel::DynamicSender::from(ch.sender());
+        let sender = #embassy_sync::channel::DynamicSender::from(ch.sender());
         (ch, sender)
     };
 
-    let config_server_impl = gen_config_server_impl(name, &attrs, &init_notify_body);
+    let config_server_impl = gen_config_server_impl(name, &attrs, &init_notify_body, paths);
 
-    let default_err = quote! { _ => Err(wifi_caddy::config_storage::ConfigError::InvalidData) };
+    let default_err = quote! { _ => Err(#wifi_caddy::config_storage::ConfigError::InvalidData) };
 
     quote! {
         #(#dto_structs)*
 
         #config_change_enum
 
-        impl wifi_caddy::config_storage::ConfigApi for #name {
-            type Error = wifi_caddy::config_storage::ConfigError;
+        impl #wifi_caddy::config_storage::ConfigApi for #name {
+            type Error = #wifi_caddy::config_storage::ConfigError;
             type ChangedSet = enumset::EnumSet<ConfigChange>;
 
             fn get_group_json(&self, group: &str, buf: &mut [u8]) -> Result<usize, Self::Error> {

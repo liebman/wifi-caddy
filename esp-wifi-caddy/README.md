@@ -43,9 +43,36 @@ HTTP portal for runtime configuration.
 - **Configuration:** All configuration is via `WifiCaddyCommand`: send `StaUp(ssid, pass)` to
   enable STA with credentials, `APUp(prefix)` to enable the AP (full SSID = prefix + MAC), and
   `APDown` to disable the AP. The caddy starts with empty state until you send commands.
-- **Config storage:** In-tree config storage traits and flash-backed storage,
-  plus captive HTTP portal (AP DHCP, HTTP server, config UI). Use with
-  **wifi-caddy-proc** to derive config structs.
+- **Config storage:** Flash-backed config storage traits and captive HTTP portal
+  (AP DHCP, HTTP server, config UI). Config structs are derived with
+  `#[derive(WifiCaddyConfig)]`, re-exported from this crate.
+
+## Single-dependency setup
+
+This crate is a facade: `#[derive(WifiCaddyConfig)]`, the config traits, the config
+page and `wifi_init!` are all reachable through it, and it re-exports the crates
+that macro-generated code references. An ESP32 app therefore needs just:
+
+```toml
+[dependencies]
+esp-wifi-caddy = "0.1.0"
+enumset        = "1.1"   # the generated `EnumSet<ConfigChange>` derives `EnumSetType`
+```
+
+`enumset` cannot be re-exported because `enumset_derive` names `::enumset`
+directly. Everything else — `wifi-caddy`, `wifi-caddy-proc`, `serde`,
+`serde-json-core`, `embassy-sync`, `static_cell` — is re-exported here and named
+through it by the generated code:
+
+```rust,ignore
+use esp_wifi_caddy::{ConfigHandle, WifiCaddyConfig, WifiSsid, WifiPass, WifiApSsidPrefix};
+use esp_wifi_caddy::WifiCaddyCommand; // StaUp(ssid, pass) / APUp(prefix) / APDown
+```
+
+Rust code that depends on `wifi-caddy` directly (no `esp-wifi-caddy`) keeps the
+historical `wifi_caddy::…` paths in generated code; see the
+[wifi-caddy-proc README](../wifi-caddy-proc/README.md) for the resolution rules
+and the `#[config_crate(...)]` override.
 
 ## Boot flow (with config + proc macro)
 
@@ -63,29 +90,31 @@ HTTP portal for runtime configuration.
 4. Use `wifi_stacks.sta` and `wifi_stacks.ap` as the `embassy_net::Stack` for your
    network tasks.
 
-## Quick integration (with config + wifi-caddy-proc)
+## Quick integration (with config + WifiCaddyConfig)
 
 This is the recommended path for most applications.
 
-Your `Cargo.toml` needs these dependencies (beyond the usual `esp-hal` / `esp-rtos` /
-`esp-radio` / `embassy-*` stack). The proc macro generates code that references them
-directly:
+Your `Cargo.toml` needs these dependencies plus one chip feature (beyond the
+`esp-hal` / `esp-rtos` / `embassy-*` crates your own application code uses). The
+derive routes the code it generates through this crate, so the rest of the config
+stack comes along with it:
 
 ```toml
 [dependencies]
-wifi-caddy        = "0.1.0"
-wifi-caddy-proc   = "0.1.0"
-esp-wifi-caddy    = "0.1.0"
-serde             = { version = "1.0", default-features = false, features = ["derive", "alloc"] }
-serde-json-core   = "0.6"
-esp-storage       = "0.8.1"
+esp-wifi-caddy    = { version = "0.1.0", features = ["esp32s3"] }
+enumset           = "1.1"
+esp-storage       = "0.10.0"
 ```
+
+The chip feature (`esp32s3` above — see [Chip selection](#chip-selection))
+forwards the selection to `esp-radio` and the rest of the `esp-*` stack, so
+`esp-radio` does not need an entry of its own.
 
 See [wifi-example/Cargo.toml](../examples/wifi-example/Cargo.toml) for a
 complete working example.
 
 ```rust,ignore
-use wifi_caddy_proc::WifiCaddyConfig;
+use esp_wifi_caddy::WifiCaddyConfig;
 
 #[derive(Clone, Debug, WifiCaddyConfig)]
 #[config_server]
@@ -122,6 +151,12 @@ The config UI supports multiple tabs when you use `page = "Name"` on `#[config_f
 loads its data on first visit (lazy load) and shows a loading overlay until ready. Use
 `#[config_ui(default_group = "Network")]` to choose which tab is active on load.
 
+Each tab is an independent `<form>` backed by its own config group, so **Save and Reload act only
+on the active tab**: Save persists just that tab's fields (one `GET /config-group/<Page>` request)
+and reports "`<Page>` saved". Edits made on a tab you have not saved are kept in the page — they
+survive switching tabs — and the tab shows a dot marker as a reminder that it still needs to be
+saved on that tab.
+
 ### Config page layout and CSS customization
 
 The config page is a single HTML document with one `<style>` block: built-in CSS first, then any
@@ -147,7 +182,7 @@ selectors match.
       </div>
       <div class="config-tab-panel">
         <div class="config-loading-overlay"> …
-        <form id="configForm-…">
+        <form id="configForm-…">   -- one form per tab; Save posts only this group
           <div class="config-form">
             <fieldset class="config-form-fieldset">
               <legend class="config-form-legend"> …
@@ -185,6 +220,7 @@ selectors match.
 | `.config-tabs` | Tab bar container |
 | `.config-tab` | Inactive tab |
 | `button.config-tab.active` | Active tab (default: blue gradient) |
+| `button.config-tab.dirty` | Tab with unsaved edits (dot marker) |
 | `.config-tab-panel` | Tab content panel |
 | `.config-loading-overlay` | Loading spinner overlay |
 | `.message`, `.message.success`, `.message.error` | Flash messages |
@@ -214,6 +250,16 @@ attributes (`#[config_store]`, `#[config_form]`, `#[config_server]`, `#[config_n
 | `WifiCaddyCommand` | `StaUp(ssid, pass)`, `APUp(prefix)`, `APDown` |
 | `mk_static!` | Helper macro to create a `&'static T` from a value |
 
+### Config stack (re-exported through this crate)
+
+| Item | Description |
+|------|-------------|
+| `WifiCaddyConfig` | The `#[derive(WifiCaddyConfig)]` derive macro (`wifi-caddy-proc`) |
+| `wifi_caddy` | The platform-agnostic core crate, re-exported as a module |
+| `ConfigHandle`, `ConfigStorageParams`, `config_storage`, `ConfigServer`, `ConfigType`, `Error` | Core config types |
+| `embassy_executor`, `embassy_net`, `embassy_sync`, `embassy_time`, `embassy_futures`, `static_cell`, `heapless` | Dependency re-exports (doc-hidden where they exist only for generated code) |
+| `defmt` / `log` | Re-exported when the matching feature is enabled |
+
 ### Generated types (from `#[derive(WifiCaddyConfig)]`)
 
 The `WifiCaddyConfig` derive macro emits several types into your crate's namespace.
@@ -237,15 +283,47 @@ These are used directly in application code:
 | `config_storage::ConfigValue` | Trait to implement for custom field types in your config struct (serialization + getter) |
 | `config_storage::MAX_VALUE_SIZE` | Max bytes per stored value (used by `ConfigStorage` default impls) |
 
+## Memory footprint
+
+Two sets of compile-time knobs decide how much static RAM the WiFi stacks and the
+config portal reserve. Both are read by build scripts, so set them in `[env]` in
+`.cargo/config.toml` or in the environment:
+
+| Environment variable | Default | Effect |
+| --- | --- | --- |
+| `ESP_WIFI_CADDY_AP_SOCKETS` | `8` | Sockets on the access-point stack (`StackResources<N>`) |
+| `ESP_WIFI_CADDY_STA_SOCKETS` | `4` | Sockets on the station stack |
+| `WIFI_CADDY_HANDLER_TASKS` | `2` | HTTP workers (requests served in parallel) |
+| `WIFI_CADDY_ACCEPTOR_TASKS` | `4` | HTTP acceptors (connections accepted at once) |
+| `WIFI_CADDY_HTTP_BUF_SIZE` | `2048` | Per-connection HTTP work buffer (bytes) |
+| `WIFI_CADDY_TCP_BUF_SIZE` | `1024` | Per-connection TCP receive *and* transmit buffer (bytes) |
+| `WIFI_CADDY_HTTP_MAX_HEADERS` | `32` | Request headers parsed per connection |
+| `WIFI_CADDY_IO_TIMEOUT_MS` | `5000` | Idle read/write timeout per connection (ms) |
+
+Every socket slot costs 352 bytes plus a fixed per-stack overhead, an HTTP worker
+costs 6,512 bytes (a work buffer plus a connection future) and an HTTP acceptor
+only ~312 bytes, so these values dominate the portal's static RAM: with the
+defaults the whole portal is ~38 KiB on ESP32-C6. The AP stack has to cover the
+portal's *accepted* connections (`WIFI_CADDY_ACCEPTOR_TASKS`) plus the DHCP server
+and the captive DNS server, plus headroom for clients that are connected but not
+yet being served; the STA stack only needs the DHCP client plus whatever the
+application opens.
+
+The values are readable in code as `esp_wifi_caddy::AP_SOCKET_COUNT` /
+`STA_SOCKET_COUNT` and `wifi_caddy::portal::{HANDLER_TASKS, HTTP_BUF_SIZE,
+TCP_BUF_SIZE, HTTP_MAX_HEADERS}`. `examples/wifi-example/footprint.sh` reports
+where a build's flash and RAM actually went.
+
 ## Features
 
 | Feature | Default | Description |
 |---------|---------|-------------|
-| `defmt` | no | defmt logging |
-| `log` | no | log crate logging (mutually exclusive with `defmt`) |
+| `defmt` | no | defmt logging (forwards to `esp-radio`, `embassy-*` and `wifi-caddy`) |
+| `log` | no | log crate logging (forwards to `esp-radio/log-04` and `wifi-caddy`; mutually exclusive with `defmt`) |
 | `captive` | yes | DNS captive-portal redirect on AP |
 | `debug-server` | no | Additional HTTP server on the STA interface (forwards to `wifi-caddy`) |
 | `nightly` | no | Enables the `impl_trait_in_assoc_type` nightly feature. **Enable this if `embassy-executor` is built with its `nightly` feature**, so that task and async code compiles correctly. |
+| chip feature | no | Selects the target chip — enable **exactly one** of `esp32`, `esp32c2`, `esp32c3`, `esp32c5`, `esp32c6`, `esp32c61`, `esp32s2`, `esp32s3`, `esp32s31` |
 
 **Feature dependencies:**
 
@@ -253,14 +331,56 @@ These are used directly in application code:
 - `captive` forwards to `wifi-caddy`'s `captive` feature (captive DNS on the AP).
 - To build without captive DNS, set `default-features = false` on `esp-wifi-caddy` (or disable `captive` explicitly).
 
+### Chip selection
+
+Enable exactly one of the chip features; it forwards the chip to `esp-radio`
+(including its Wi-Fi driver) and to `esp-hal`, `esp-rtos`, `esp-storage`,
+`esp-alloc` and `esp-bootloader-esp-idf`:
+
+```toml
+[dependencies]
+esp-wifi-caddy = { version = "0.1.0", features = ["esp32s3"] }
+```
+
+Because the chip selection travels with `esp-wifi-caddy`, an `esp-radio`
+dependency (and its chip feature) is not needed in your own `Cargo.toml`. The same
+goes for `esp-radio`'s `log-04` / `defmt` features, which follow this crate's
+`log` / `defmt` features.
+
+`esp-wifi-caddy` also enables `esp-hal`'s and `esp-radio`'s `unstable` features
+by itself: the Wi-Fi connection task waits for a STA disconnect with
+`WifiController::is_connected()` and `WifiController::subscribe()`, which are
+gated behind `esp-radio/unstable`. Applications do not need to enable them.
+
+The list covers every Wi-Fi capable chip `esp-radio` supports — ESP32-S31 is
+RISC-V (`riscv32imafc-unknown-none-elf`), not Xtensa. `esp32h2` and `esp32p4` are
+deliberately not offered: those parts have no Wi-Fi driver, and this crate always
+enables `esp-radio/wifi`, which makes `esp-radio`'s build script abort for them.
+`esp32s31` additionally needs a recent `esp-metadata-generated` (>= 0.5.2) in the
+dependency graph for `esp-radio`'s Wi-Fi driver to be available.
+
+Every chip feature compiles for the target. A full application is still subject to
+each chip's link-time memory budget (ESP32-S2's DRAM is the tightest), and the
+`esp-wifi-sys` blobs for ESP32-C61 / ESP32-S31 currently do not link with
+`rust-lld`; see the
+[example's chip notes](../examples/wifi-example/README.md#chip-notes).
+
 ## Prerequisites
 
-1. **ESP Rust toolchain** — install via [espup](https://github.com/esp-rs/espup):
+1. **ESP Rust toolchain** — install via [espup](https://github.com/esp-rs/espup).
+   This crate is built with Espressif's **1.97.0.0** toolchain (rustc 1.97), which
+   is also its MSRV; `espup install` installs the latest release and
+   `espup update` upgrades an existing install:
 
    ```bash
    cargo install espup
-   espup install
+   espup install    # or: espup update
    ```
+
+   A local `rust-toolchain.toml` (`channel = "esp"`, gitignored so each checkout
+   can choose) makes cargo use that toolchain, whose `rust-src` component is
+   required by the `-Zbuild-std` builds for Xtensa targets. RISC-V targets work
+   with either the `esp` toolchain or `rustup target add` on a regular toolchain.
 
 2. **espflash** — for flashing and monitoring:
 

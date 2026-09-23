@@ -18,9 +18,12 @@ persistence, and dual STA+AP control — all generated at compile time.
 
 ## Supported hardware
 
-ESP32, ESP32-S3, ESP32-C6 — any target supported by
+Every Wi-Fi capable chip supported by
 [esp-hal](https://github.com/esp-rs/esp-hal) and
-[esp-radio](https://github.com/esp-rs/esp-radio).
+[esp-radio](https://github.com/esp-rs/esp-radio): ESP32, ESP32-C2, ESP32-C3,
+ESP32-C5, ESP32-C6, ESP32-C61, ESP32-S2, ESP32-S3 and ESP32-S31. The chip is
+selected with a feature on `esp-wifi-caddy` — see
+[Chip selection](esp-wifi-caddy/README.md#chip-selection).
 
 ## Quick look
 
@@ -95,12 +98,20 @@ DNS on the AP stack.
 
 ## Getting started
 
-1. **Install the ESP Rust toolchain** via [espup](https://github.com/esp-rs/espup):
+1. **Install the ESP Rust toolchain** via [espup](https://github.com/esp-rs/espup).
+   This repo is built with Espressif's **1.97.0.0** toolchain (rustc 1.97), which
+   is also the MSRV of the esp-* crates. `espup install` installs the latest
+   release; `espup update` upgrades an existing install:
 
    ```bash
    cargo install espup
-   espup install
+   espup install    # or: espup update
    ```
+
+   Cargo picks up the `esp` toolchain through a local `rust-toolchain.toml`
+   (`channel = "esp"`, gitignored so each checkout can choose); the Espressif
+   toolchain ships the `rust-src` component required by the `-Zbuild-std` Xtensa
+   builds.
 
 2. **Install espflash** for flashing and monitoring:
 
@@ -114,13 +125,22 @@ DNS on the AP stack.
 
    ```toml
    [dependencies]
-   wifi-caddy        = "0.1.0"
-   wifi-caddy-proc   = "0.1.0"
-   esp-wifi-caddy    = "0.1.0"
-   serde             = { version = "1", default-features = false, features = ["derive", "alloc"] }
-   serde-json-core   = "0.6"
-   esp-storage       = "0.8"
+   esp-wifi-caddy    = { version = "0.1.0", features = ["esp32s3"] }
+   enumset           = "1.1"
+   esp-storage       = "0.10"
    ```
+
+   The chip feature (`esp32s3` above, or any of `esp32`, `esp32c2`, `esp32c3`,
+   `esp32c5`, `esp32c6`, `esp32c61`, `esp32s2`, `esp32s3`, `esp32s31`) is
+   forwarded to `esp-radio` and the rest of the `esp-*` stack, so `esp-radio`
+   needs no entry of its own. See
+   [Chip selection](esp-wifi-caddy/README.md#chip-selection).
+
+   `esp-wifi-caddy` re-exports `wifi-caddy`, the `WifiCaddyConfig` derive macro,
+   and the crates that macro-generated code references, so `wifi-caddy` and
+   `wifi-caddy-proc` need no entries of their own. `enumset` is required because
+   the `EnumSetType` derive resolves its own crate by name; `serde_json_core` is
+   available as `esp_wifi_caddy::serde_json_core` for direct JSON access.
 
 4. **Define your config struct** with `#[derive(WifiCaddyConfig)]` and the
    field/struct attributes you need. See the
@@ -135,8 +155,9 @@ DNS on the AP stack.
    ```bash
    cd examples/wifi-example
    cargo run-s3          # ESP32-S3
-   cargo run-32          # ESP32
-   cargo run-c6          # ESP32-C6
+   # Every working chip has clippy/build/run aliases: -32, -s3, -c2, -c3, -c5,
+   # -c6 (see the example README for the target list and the chips still waiting
+   # on link fixes).
    ```
 
 For the full integration guide, API reference, and feature flags, see the
@@ -146,7 +167,8 @@ For the full integration guide, API reference, and feature flags, see the
 
 The [wifi-example](examples/wifi-example/README.md) demonstrates WiFi
 connection, flash-backed config, and config change notifications. Press the
-boot button (GPIO 0) to toggle the AP on and off — when the AP is up, the
+devkit BOOT button (GPIO0 on the ESP32/S2/S3, GPIO9 on the C2/C3/C6/C61, GPIO28
+on the C5) to toggle the AP on and off — when the AP is up, the
 captive config portal is served at `192.168.2.1` and phones will open it
 automatically. It's the best starting point for understanding the system end
 to end.

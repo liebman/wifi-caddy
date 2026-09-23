@@ -17,6 +17,9 @@ proc-macro = true
 syn = { version = "2.0", features = ["full"] }
 quote = "1.0"
 proc-macro2 = "1.0"
+# Resolves the crate root used by generated code (`wifi_caddy` vs a facade crate)
+# by reading the deriving crate's manifest, like esp-hal-procmacros does for esp-hal.
+proc-macro-crate = "3"
 
 [dev-dependencies]
 trybuild = "1"

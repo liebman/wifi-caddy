@@ -3,7 +3,7 @@ name = "wifi-example"
 version = "0.1.0"
 edition = "2024"
 license = "MIT OR Apache-2.0"
-rust-version = "1.87"
+rust-version = "1.97"
 description = "Minimal example: esp-wifi-caddy + wifi-caddy-proc, WiFi connect with example config"
 publish = false
 
@@ -32,7 +32,6 @@ defmt = [
     "esp-alloc/defmt",
     "esp-backtrace/defmt",
     "esp-rtos/defmt",
-    "esp-radio/defmt",
     "esp-println/defmt-espflash",
     "esp-storage/defmt",
     "esp-wifi-caddy/defmt",
@@ -41,61 +40,144 @@ log = [
     "dep:log",
     "esp-backtrace/println",
     "esp-rtos/log-04",
-    "esp-radio/log-04",
     "esp-println/log-04",
     "esp-wifi-caddy/log",
 ]
-esp32s3 = [
-    "esp-hal/esp32s3",
-    "esp-backtrace/esp32s3",
-    "esp-println/esp32s3",
-    "esp-rtos/esp32s3",
-    "esp-radio/esp32s3",
-    "esp-bootloader-esp-idf/esp32s3",
-    "esp-storage/esp32s3",
-]
+# The chip features below select the target chip. `esp-wifi-caddy/<chip>` is
+# what forwards the chip to `esp-radio` (and the rest of the `esp-*` stack), so
+# this example does not need an `esp-radio` dependency of its own.
 esp32 = [
+    "esp-wifi-caddy/esp32",
     "esp-hal/esp32",
     "esp-backtrace/esp32",
     "esp-println/esp32",
     "esp-rtos/esp32",
-    "esp-radio/esp32",
     "esp-bootloader-esp-idf/esp32",
     "esp-storage/esp32",
 ]
+esp32s2 = [
+    "esp-wifi-caddy/esp32s2",
+    "esp-hal/esp32s2",
+    "esp-backtrace/esp32s2",
+    "esp-println/esp32s2",
+    "esp-rtos/esp32s2",
+    "esp-bootloader-esp-idf/esp32s2",
+    "esp-storage/esp32s2",
+]
+esp32s3 = [
+    "esp-wifi-caddy/esp32s3",
+    "esp-hal/esp32s3",
+    "esp-backtrace/esp32s3",
+    "esp-println/esp32s3",
+    "esp-rtos/esp32s3",
+    "esp-bootloader-esp-idf/esp32s3",
+    "esp-storage/esp32s3",
+]
+esp32c2 = [
+    "esp-wifi-caddy/esp32c2",
+    "esp-hal/esp32c2",
+    "esp-backtrace/esp32c2",
+    "esp-println/esp32c2",
+    "esp-rtos/esp32c2",
+    "esp-bootloader-esp-idf/esp32c2",
+    "esp-storage/esp32c2",
+]
+esp32c3 = [
+    "esp-wifi-caddy/esp32c3",
+    "esp-hal/esp32c3",
+    "esp-backtrace/esp32c3",
+    "esp-println/esp32c3",
+    "esp-rtos/esp32c3",
+    "esp-bootloader-esp-idf/esp32c3",
+    "esp-storage/esp32c3",
+]
+esp32c5 = [
+    "esp-wifi-caddy/esp32c5",
+    "esp-hal/esp32c5",
+    "esp-backtrace/esp32c5",
+    "esp-println/esp32c5",
+    "esp-rtos/esp32c5",
+    "esp-bootloader-esp-idf/esp32c5",
+    "esp-storage/esp32c5",
+]
 esp32c6 = [
+    "esp-wifi-caddy/esp32c6",
     "esp-hal/esp32c6",
     "esp-backtrace/esp32c6",
     "esp-println/esp32c6",
     "esp-rtos/esp32c6",
-    "esp-radio/esp32c6",
     "esp-bootloader-esp-idf/esp32c6",
     "esp-storage/esp32c6",
+]
+esp32c61 = [
+    "esp-wifi-caddy/esp32c61",
+    "esp-hal/esp32c61",
+    "esp-backtrace/esp32c61",
+    "esp-println/esp32c61",
+    "esp-rtos/esp32c61",
+    "esp-bootloader-esp-idf/esp32c61",
+    "esp-storage/esp32c61",
+]
+esp32s31 = [
+    "esp-wifi-caddy/esp32s31",
+    "esp-hal/esp32s31",
+    "esp-backtrace/esp32s31",
+    "esp-println/esp32s31",
+    "esp-rtos/esp32s31",
+    "esp-bootloader-esp-idf/esp32s31",
+    "esp-storage/esp32s31",
 ]
 debug-server = ["esp-wifi-caddy/debug-server"]
 
 [dependencies]
-wifi-caddy = { path = "../../wifi-caddy" }
-wifi-caddy-proc = { path = "../../wifi-caddy-proc" }
-serde = { version = "1.0", default-features = false, features = ["derive", "alloc"] }
-serde-json-core = "0.6"
-
-esp-storage = { version = "0.9.0" }
-
 esp-wifi-caddy = { path = "../../esp-wifi-caddy" }
-esp-hal = { version = "1.1.0", features = ["unstable"] }
-esp-alloc = { version = "0.10.0" }
-esp-rtos = { version = "0.3.0", features = ["embassy", "esp-alloc", "esp-radio"] }
-esp-radio = { version = "0.18.0", features = ["wifi"] }
-esp-backtrace = { version = "0.19.0", default-features = false, features = ["panic-handler"] }
-esp-bootloader-esp-idf = { version = "0.5.0", default-features = false }
+# Required by the code generated from `#[derive(WifiCaddyConfig)]`: the enumset
+# derive resolves its own crate by name.
+enumset = { version = "1.1.10" }
+
+esp-storage = { version = "0.10.0" }
+
+# Keep this in sync with the local checkout patched in [patch.crates-io] below: a
+# patch only takes effect when its version satisfies this requirement, otherwise
+# cargo silently pulls a second `esp_hal` from crates.io (duplicate types + a
+# second `esp-hal-procmacros` without `__esp_idf_bootloader`).
+esp-hal = { version = "~1.2.2", features = ["unstable"] }
+esp-alloc = { version = "0.11.0" }
+esp-rtos = { version = "0.4.0", features = [
+    "embassy",
+    "esp-alloc",
+    "esp-radio",
+] }
+esp-backtrace = { version = "0.20.0", default-features = false, features = [
+    "panic-handler",
+] }
+esp-bootloader-esp-idf = { version = "0.6.0", default-features = false }
 embassy-executor = { version = "0.10.0" }
 embassy-time = { version = "0.5.0" }
-embassy-sync = { version = "0.8" }
 embassy-futures = { version = "0.1.2" }
-embassy-net = { version = "0.9.0", features = ["dhcpv4", "medium-ethernet", "tcp", "udp", "dns"] }
+embassy-net = { version = "0.9.0", features = [
+    "dhcpv4",
+    "medium-ethernet",
+    "tcp",
+    "udp",
+    "dns",
+] }
 defmt = { version = "1.0.1", optional = true }
-static_cell = { version = "2.1.1", default-features = false }
-enumset = { version = "1.1.10" }
-esp-println = "0.17.0"
+esp-println = "0.18.0"
 log = { version = "0.4", optional = true }
+
+# [patch.crates-io]
+# esp-alloc = { path = "../../../esp-hal/esp-alloc" }
+# esp-backtrace = { path = "../../../esp-hal/esp-backtrace" }
+# esp-bootloader-esp-idf = { path = "../../../esp-hal/esp-bootloader-esp-idf" }
+# esp-hal = { path = "../../../esp-hal/esp-hal" }
+# esp-phy = { path = "../../../esp-hal/esp-phy" }
+# esp-println = { path = "../../../esp-hal/esp-println" }
+# esp-radio = { path = "../../../esp-hal/esp-radio" }
+# esp-radio-rtos-driver = { path = "../../../esp-hal/esp-radio-rtos-driver" }
+# esp-riscv-rt = { path = "../../../esp-hal/esp-riscv-rt" }
+# esp-rom-sys = { path = "../../../esp-hal/esp-rom-sys" }
+# esp-rtos = { path = "../../../esp-hal/esp-rtos" }
+# esp-storage = { path = "../../../esp-hal/esp-storage" }
+# esp-sync = { path = "../../../esp-hal/esp-sync" }
+# xtensa-lx-rt = { path = "../../../esp-hal/xtensa-lx-rt" }

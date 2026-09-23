@@ -2,6 +2,7 @@
 //! as a single `&'static str` at compile time.
 
 use crate::field_attrs::{ParsedFormAttrs, parse_config_form_attr_into};
+use crate::paths::CratePaths;
 use crate::utils::{
     consume_meta_value, escape_html, escape_js_str, humanize_label, page_name_to_js_id,
     try_parse_lit_str,
@@ -536,8 +537,9 @@ fn gen_full_page(ui: &UiAttrs, pages: &[(String, Vec<FormField>)]) -> Result<Str
 /// and field-level `#[config_form(...)]` for form fields.
 ///
 /// Emits: `const CONFIG_PAGE: &str` (one complete HTML document) and a `ConfigFormGen` impl.
-pub fn derive_config_form_impl(input: &DeriveInput) -> TokenStream {
+pub fn derive_config_form_impl(input: &DeriveInput, paths: &CratePaths) -> TokenStream {
     let name = &input.ident;
+    let wifi_caddy = &paths.wifi_caddy;
 
     let syn::Data::Struct(data) = &input.data else {
         return syn::Error::new_spanned(input, "ConfigForm only supports structs")
@@ -593,7 +595,7 @@ pub fn derive_config_form_impl(input: &DeriveInput) -> TokenStream {
             const CONFIG_PAGE: &str = #page_lit;
         }
 
-        impl wifi_caddy::config_storage::ConfigFormGen for #name {
+        impl #wifi_caddy::config_storage::ConfigFormGen for #name {
             fn config_page() -> &'static str {
                 Self::CONFIG_PAGE
             }

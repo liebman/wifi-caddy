@@ -1,10 +1,19 @@
 //! Minimal example: esp-wifi-caddy + config crates — connect to WiFi and print config changes.
 //!
 //! Config: WiFi credentials and example string/integer. Storage in flash (config partition).
-//! Boot button (GPIO 0): press toggles AP on/off and serves the HTTP config UI on AP.
+//! The AP (and with it the HTTP config UI) starts at boot when the config has no
+//! STA credentials, so a fresh device is reachable; the devkit BOOT button
+//! (GPIO0 on the ESP32/S2/S3, GPIO9 on the C2/C3/C6/C61, GPIO28 on the C5 —
+//! the chip's download-boot strapping pin, see `boot_pin` below) toggles the AP
+//! off and on.
 
 #![no_std]
 #![no_main]
+// The portal's HTTP connection future nests the TCP, timeout and HTTP state
+// machines (fetch -> handle_connection -> Connection -> WithTimeout -> ...), which
+// exceeds rustc's default type-layout recursion limit (128). Applications that use
+// the config portal need the same attribute.
+#![recursion_limit = "256"]
 
 extern crate alloc;
 
@@ -21,13 +30,14 @@ use esp_hal::gpio::{InputConfig, Pull};
 use esp_hal::timer::timg::TimerGroup;
 use esp_println as _;
 use esp_storage::FlashStorage;
-use esp_wifi_caddy::{WifiApSsidPrefix, WifiPass, WifiSsid};
+use esp_wifi_caddy::{ConfigHandle, WifiApSsidPrefix, WifiCaddyConfig, WifiPass, WifiSsid};
 #[cfg(not(feature = "defmt"))]
 use log::info;
-use wifi_caddy::ConfigHandle;
-use wifi_caddy_proc::WifiCaddyConfig;
 
 esp_bootloader_esp_idf::esp_app_desc!();
+
+/// AP SSID prefix; the full SSID is this prefix plus the AP MAC (12 hex chars).
+const AP_SSID_PREFIX: &str = "wifi-example-";
 
 /// App config: WiFi credentials and example string and integer.
 #[derive(Clone, Debug, Default, WifiCaddyConfig)]
@@ -112,13 +122,18 @@ async fn main(spawner: Spawner) {
     esp_println::logger::init_logger_from_env();
     let peripherals = esp_hal::init(esp_hal::Config::default());
 
+    // ESP32-S2 has the least usable DRAM of the supported chips, so it keeps both
+    // heaps in the (larger) reclaimed region instead of the second DRAM heap.
+    #[cfg(feature = "esp32s2")]
+    esp_alloc::heap_allocator!(#[esp_hal::ram(reclaimed)] size: 96 * 1024);
+    #[cfg(not(feature = "esp32s2"))]
     esp_alloc::heap_allocator!(#[esp_hal::ram(reclaimed)] size: 64 * 1024);
+
+    #[cfg(not(feature = "esp32s2"))]
     esp_alloc::heap_allocator!(size: 16 * 1024);
 
     let timg0 = TimerGroup::new(peripherals.TIMG0);
-    let sw_int =
-        esp_hal::interrupt::software::SoftwareInterruptControl::new(peripherals.SW_INTERRUPT);
-    esp_rtos::start(timg0.timer0, sw_int.software_interrupt0);
+    esp_rtos::start(timg0.timer0, peripherals.FROM_CPU_INTR0);
 
     info!("wifi-example starting");
 
@@ -134,7 +149,7 @@ async fn main(spawner: Spawner) {
     spawner.spawn(ip_address_task(wifi_stacks.sta).unwrap());
     info!("IP address task spawned (reports IP changes)");
 
-    {
+    let sta_configured = {
         let cfg = config.lock().await;
         let ssid = cfg.wifi_ssid().clone();
         if !ssid.is_empty() {
@@ -147,16 +162,55 @@ async fn main(spawner: Spawner) {
                 ))
                 .await;
         }
-    }
+        !ssid.is_empty()
+    };
     spawner.spawn(config_updated_task(config_rx, config, wifi_sender).unwrap());
     info!("wifi config task spawned (awaits config updates)");
 
-    let mut button_pin = esp_hal::gpio::Input::new(
-        peripherals.GPIO0, // BOOT_BUTTON_GPIO
-        InputConfig::default().with_pull(Pull::Up),
-    );
+    // Devkit BOOT button. It pulls the chip's download-boot strapping pin low, and
+    // that pin is not GPIO0 on every chip — see the per-chip "Boot Mode Selection"
+    // docs, https://docs.espressif.com/projects/esptool/en/latest/<chip>/advanced-topics/boot-mode-selection.html
+    //
+    //   esp32, esp32s2, esp32s3              -> GPIO0
+    //   esp32c2, esp32c3, esp32c6, esp32c61  -> GPIO9
+    //   esp32c5                              -> GPIO28
+    //   esp32s31                             -> GPIO61 (experimental chip, best effort)
+    #[cfg(any(feature = "esp32", feature = "esp32s2", feature = "esp32s3"))]
+    let boot_pin = peripherals.GPIO0;
+    #[cfg(any(
+        feature = "esp32c2",
+        feature = "esp32c3",
+        feature = "esp32c6",
+        feature = "esp32c61"
+    ))]
+    let boot_pin = peripherals.GPIO9;
+    #[cfg(feature = "esp32c5")]
+    let boot_pin = peripherals.GPIO28;
+    #[cfg(feature = "esp32s31")]
+    let boot_pin = peripherals.GPIO61;
+
+    // The BOOT pins have an internal pull-up (and the devkit adds one), so the
+    // button reads high when released and low when pressed.
+    let mut button_pin =
+        esp_hal::gpio::Input::new(boot_pin, InputConfig::default().with_pull(Pull::Up));
 
     let mut ap_state = false;
+    if !sta_configured {
+        // No STA credentials yet, so the device cannot be reached over the network:
+        // start the AP (and with it the config portal) instead of waiting for the
+        // boot button to be pressed.
+        info!(
+            "No STA credentials in config: starting the AP config portal at http://{}/",
+            esp_wifi_caddy::AP_IP_ADDRESS
+        );
+        wifi_sender
+            .send(esp_wifi_caddy::WifiCaddyCommand::APUp(
+                WifiApSsidPrefix::from_str(AP_SSID_PREFIX).unwrap(),
+            ))
+            .await;
+        ap_state = true;
+    }
+
     loop {
         button_pin.wait_for_falling_edge().await;
         if ap_state {
@@ -165,10 +219,13 @@ async fn main(spawner: Spawner) {
                 .send(esp_wifi_caddy::WifiCaddyCommand::APDown)
                 .await;
         } else {
-            info!("AP up");
+            info!(
+                "AP up: config portal at http://{}/",
+                esp_wifi_caddy::AP_IP_ADDRESS
+            );
             wifi_sender
                 .send(esp_wifi_caddy::WifiCaddyCommand::APUp(
-                    WifiApSsidPrefix::from_str("wifi-example-").unwrap(),
+                    WifiApSsidPrefix::from_str(AP_SSID_PREFIX).unwrap(),
                 ))
                 .await;
         }

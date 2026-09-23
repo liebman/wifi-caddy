@@ -9,6 +9,11 @@ use embassy_sync::channel::DynamicSender;
 use embassy_sync::mutex::Mutex;
 
 /// Query for config-group endpoints: optional `set` body (JSON string).
+///
+/// The value is percent-decoded into a heap `String`, bounded by the request head
+/// that the HTTP server had to buffer anyway (see `HTTP_BUF_SIZE`); decoding into
+/// a fixed inline buffer was measured at ~0.5 KiB *more* static RAM per handler,
+/// so the allocation is the smaller choice here.
 pub struct ConfigQuery {
     /// If present, apply this JSON to the config group and persist.
     pub set: Option<alloc::string::String>,
