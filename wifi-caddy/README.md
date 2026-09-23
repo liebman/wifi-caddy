@@ -52,6 +52,7 @@ defaults chosen for small targets.
 | `WIFI_CADDY_HTTP_MAX_HEADERS`    | `usize` | `32`    | Request headers parsed per connection           |
 | `WIFI_CADDY_IO_TIMEOUT_MS`       | `u32`   | `5000`  | Idle read/write timeout per connection (ms)     |
 | `WIFI_CADDY_KEEPALIVE_TIMEOUT_MS`| `u32`   | `3000`  | TCP keep-alive timeout (ms)                    |
+| `WIFI_CADDY_MAX_VALUE_SIZE`      | `usize` | `128`   | Longest single config value the storage path round-trips (bytes) |
 
 Where the memory goes — capacity is cheap, parallelism is not. `serve_loop` runs
 `HANDLER_TASKS` workers (the requests served in parallel) that are fed from a
@@ -126,11 +127,40 @@ WIFI_CADDY_ACCEPTOR_TASKS = "4"  # acceptors (connection capacity), >= workers
 WIFI_CADDY_TCP_BUF_SIZE = "1024"
 WIFI_CADDY_HTTP_BUF_SIZE = "2048"
 WIFI_CADDY_HTTP_MAX_HEADERS = "32"
+WIFI_CADDY_MAX_VALUE_SIZE = "128"   # longest single config value (bytes)
 ```
 
 The tunables are also exported as constants (`wifi_caddy::portal::HANDLER_TASKS`,
 `ACCEPTOR_TASKS`, `TCP_BUF_SIZE`, `HTTP_BUF_SIZE`, `HTTP_MAX_HEADERS`,
-`IO_TIMEOUT_MS`, `KEEPALIVE_TIMEOUT_MS`), so an
+`IO_TIMEOUT_MS`, `KEEPALIVE_TIMEOUT_MS`, and `config_storage::MAX_VALUE_SIZE`), so an
 application can log them next to its own memory report. For a ready-made report,
 `examples/wifi-example/footprint.sh` prints the section totals, the largest RAM
 statics and a per-crate split for a release ELF.
+
+### Config value size
+
+`WIFI_CADDY_MAX_VALUE_SIZE` (default 128) is not a buffer a request moves through,
+it is the longest single config value the storage path can round-trip. It bounds the
+scratch buffers in `ConfigStorage::{get_value, set_value}` and, in `esp-wifi-caddy`,
+the flash backend's fetch/store buffers — which are sized from the same constant, so
+one setting keeps both sides in step.
+
+Exceeding it is not a soft failure:
+
+- **Storing** fails with `ConfigError::BufferTooSmall("need N bytes")`, and the
+  `ConfigStore` derive's `store_to` writes fields in *declaration order* and stops at
+  the first error. The fields declared before the long one are already in flash, the
+  ones after it are silently skipped, and the portal still reports the save as failed
+  (HTTP 500) — a half-applied save. Config-group requests also skip the change
+  notification, so e.g. a WiFi credential change persists but is not applied until
+  the next boot.
+- **Loading** fails with `ConfigError::Backend` once such a value is in flash, so
+  raising the limit *down* (or config from an older build that wrote long values)
+  makes the config unloadable. For `esp-wifi-caddy` applications `wifi_init!` then
+  returns `Err` at boot; erase the config partition to recover.
+
+Raise it as soon as a config has a `String` field that can be long — a REST bearer
+token is typically ~190 bytes, a URL plus an entity id can pass 128 between them, and
+the limit applies per *value*. The cost is stack: `MAX_VALUE_SIZE` bytes per scratch
+buffer, two of them live at once on either path (`set_value` plus the backend's fetch
+buffer, `get_value` plus its load buffer).

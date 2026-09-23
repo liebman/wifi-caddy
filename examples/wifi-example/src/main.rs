@@ -30,9 +30,7 @@ use esp_hal::gpio::{InputConfig, Pull};
 use esp_hal::timer::timg::TimerGroup;
 use esp_println as _;
 use esp_storage::FlashStorage;
-use esp_wifi_caddy::{
-    ConfigHandle, WifiApSsidPrefix, WifiCaddyConfig, WifiPass, WifiSsid,
-};
+use esp_wifi_caddy::{ConfigHandle, WifiApSsidPrefix, WifiCaddyConfig, WifiPass, WifiSsid};
 #[cfg(not(feature = "defmt"))]
 use log::info;
 
@@ -193,10 +191,8 @@ async fn main(spawner: Spawner) {
 
     // The BOOT pins have an internal pull-up (and the devkit adds one), so the
     // button reads high when released and low when pressed.
-    let mut button_pin = esp_hal::gpio::Input::new(
-        boot_pin,
-        InputConfig::default().with_pull(Pull::Up),
-    );
+    let mut button_pin =
+        esp_hal::gpio::Input::new(boot_pin, InputConfig::default().with_pull(Pull::Up));
 
     let mut ap_state = false;
     if !sta_configured {

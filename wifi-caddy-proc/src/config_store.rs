@@ -166,7 +166,10 @@ fn gen_key_enum(keys: &[KeyInfo]) -> TokenStream {
 // Phase 4 – getters and setters
 // ---------------------------------------------------------------------------
 
-fn gen_accessors(fields: &[StoreField], paths: &CratePaths) -> (Vec<TokenStream>, Vec<TokenStream>) {
+fn gen_accessors(
+    fields: &[StoreField],
+    paths: &CratePaths,
+) -> (Vec<TokenStream>, Vec<TokenStream>) {
     let wifi_caddy = &paths.wifi_caddy;
     let getters = fields
         .iter()

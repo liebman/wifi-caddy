@@ -60,6 +60,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `MAX_VALUE_SIZE` (after serialization) fail to store with
   `ConfigError::BufferTooSmall`, so raise it — and the storage backend's own
   buffer, which must be at least as large — if a config has long `String` fields.
+  It is also now configurable rather than fixed: the new
+  `WIFI_CADDY_MAX_VALUE_SIZE` build-time env var (default 128, unchanged) sets it,
+  and `esp-wifi-caddy`'s flash backend derives its fetch/store buffers from the
+  same constant, so one setting moves both. A config with a value longer than the
+  limit could otherwise not save *any* change from the portal: the `ConfigStore`
+  derive's `store_to` writes fields in declaration order and stops at the first
+  error, so the fields declared after the long one were silently left unchanged
+  while the ones before it were already persisted — and the portal still reported
+  the whole save as failed (HTTP 500).
+- `esp-wifi-caddy`'s flash buffer is now the *item* size — `MAX_VALUE_SIZE` plus
+  the 8-byte key, rounded up to the 4-byte flash word — rather than
+  `MAX_VALUE_SIZE`. `sequential_storage` stores the key and the value as one item,
+  so the old size was 8 bytes short of what the config API allows: a value close
+  to the limit was accepted by `set_value` and then rejected by the backend, and
+  one already in flash could not be read back (`load_from` fails, so `wifi_init!`
+  returns `Err` at boot).
 - The tuning constants are now `pub` (`wifi_caddy::portal::{HANDLER_TASKS,
   TCP_BUF_SIZE, HTTP_BUF_SIZE, KEEPALIVE_TIMEOUT_MS, HTTP_MAX_HEADERS}`) so an
   application can log or assert them next to its own memory accounting.

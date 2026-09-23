@@ -139,7 +139,10 @@ mod tests {
             // enumset is never routed: the `EnumSetType` derive names `::enumset` itself.
             "enumset::EnumSet<ConfigChange>",
         ] {
-            assert!(facade.contains(expected), "facade output is missing {expected}");
+            assert!(
+                facade.contains(expected),
+                "facade output is missing {expected}"
+            );
         }
 
         let core = expand(&[]);

@@ -45,6 +45,15 @@ fn main() {
     //   bytes inside every connection state.
     // * IO_TIMEOUT_MS = 5000: bounds how long a connection can hold a worker
     //   without any IO progress.
+    // * MAX_VALUE_SIZE = 128: the longest single config value (in serialized
+    //   bytes) that the storage path can round-trip. It bounds the per-call
+    //   scratch buffers in `ConfigStorage::{get_value, set_value}`, which live on
+    //   the stack of whatever task stores the config — for `esp-wifi-caddy` that
+    //   is the config HTTP worker (plus the flash backend's own fetch/store
+    //   buffers, which are sized from the same constant) — so the default stays
+    //   small. A config with longer `String` fields must raise it: a longer value
+    //   fails to store with `ConfigError::BufferTooSmall` and, once in flash,
+    //   fails to load with `ConfigError::Backend`.
     let handler_tasks = env_or("WIFI_CADDY_HANDLER_TASKS", "2");
     let tcp_buf_size = env_or("WIFI_CADDY_TCP_BUF_SIZE", "1024");
     let http_buf_size = env_or("WIFI_CADDY_HTTP_BUF_SIZE", "2048");
@@ -52,7 +61,9 @@ fn main() {
     let http_max_headers = env_or("WIFI_CADDY_HTTP_MAX_HEADERS", "32");
     let io_timeout_ms = env_or("WIFI_CADDY_IO_TIMEOUT_MS", "5000");
     let acceptor_tasks = env_or("WIFI_CADDY_ACCEPTOR_TASKS", "4");
+    let max_value_size = env_or("WIFI_CADDY_MAX_VALUE_SIZE", "128");
 
+    validate_usize("WIFI_CADDY_MAX_VALUE_SIZE", &max_value_size);
     validate_usize("WIFI_CADDY_HANDLER_TASKS", &handler_tasks);
     validate_usize("WIFI_CADDY_TCP_BUF_SIZE", &tcp_buf_size);
     validate_usize("WIFI_CADDY_HTTP_BUF_SIZE", &http_buf_size);
@@ -145,4 +156,17 @@ fn main() {
         ),
     )
     .unwrap();
+
+    // `MAX_VALUE_SIZE` belongs to `config_storage` rather than `portal`, so it gets
+    // its own generated file (included by `src/config_storage.rs`).
+    let out = std::path::Path::new(&std::env::var("OUT_DIR").unwrap()).join("config_limits.rs");
+
+    let body = concat!(
+        "/// Maximum serialized size of a single config value, in bytes.\n",
+        "///\n",
+        "/// Override with env var `WIFI_CADDY_MAX_VALUE_SIZE` (default 128); see the\n",
+        "/// `config_storage` module documentation for what it bounds.\n",
+        "pub const MAX_VALUE_SIZE: usize = ",
+    );
+    std::fs::write(&out, format!("{body}{max_value_size};\n")).unwrap();
 }

@@ -41,21 +41,27 @@ const _: () = {
     ::core::assert!(FORMAT_VERSION_KEY_U64 == 0x63db463dc1cefc01);
 };
 
+/// Serialized length of the map's key: `MapStorage<u64, …>` writes the key as
+/// eight little-endian bytes.
+const KEY_SIZE: usize = 8;
+
+/// Flash word size in bytes — `READ_SIZE`/`WRITE_SIZE` of `esp-storage`'s
+/// `NorFlash` impl (4 on every ESP chip). `sequential_storage` rounds an item up
+/// to this when reading it back, so the buffer has to cover that padding as well.
+const FLASH_WORD_SIZE: usize = <FlashStorage<'static>>::WORD_SIZE as usize;
+
 /// Internal buffer size for `sequential_storage` fetch/store operations.
 ///
-/// This limits the maximum serialized size of any single config value.
-/// If a `ConfigValue::to_bytes()` result exceeds this, the operation fails
-/// with `ConfigError::Backend`. Must be >= `wifi_caddy::config_storage::MAX_VALUE_SIZE`.
-const BUFFER_SIZE: usize = 128;
-
-/// `ConfigStorage::set_value` serializes into a `MAX_VALUE_SIZE` buffer before
-/// calling into this backend, so the backend's own buffer must not be smaller —
-/// otherwise a value that the config API accepts would be rejected here.
-///
-/// Uses `::core::assert!`: this crate's `fmt.rs` maps `assert!` to
-/// `defmt::assert!` when the `defmt` feature is on, which does not work in const
-/// context (same reason as the FNV golden-value assertions above).
-const _: () = ::core::assert!(BUFFER_SIZE >= MAX_VALUE_SIZE);
+/// A stored item is the *key plus the value*, rounded up to the flash word size,
+/// so this buffer needs `KEY_SIZE` bytes more than
+/// `wifi_caddy::config_storage::MAX_VALUE_SIZE` — the limit the config API and
+/// the derive macro enforce before calling into this backend (settable with the
+/// `WIFI_CADDY_MAX_VALUE_SIZE` build-time env var). Sizing it any smaller makes
+/// a value the config API accepts fail here with `ConfigError::Backend` on the
+/// way in, and be unreadable on the way out: `store_to` starts failing, and once
+/// such a value is in flash `load_from` fails, so `wifi_init!` returns `Err` at
+/// boot.
+const BUFFER_SIZE: usize = (MAX_VALUE_SIZE + KEY_SIZE).next_multiple_of(FLASH_WORD_SIZE);
 
 /// Type-state marker: storage has not been mounted yet.
 pub struct Unmounted;

@@ -220,7 +220,10 @@ mod tests {
 
         let input: syn::DeriveInput =
             syn::parse_str("#[config_crate(core)] struct S { f: u32 }").unwrap();
-        assert_eq!(CratePaths::resolve(&input.attrs).wifi_caddy.to_string(), "wifi_caddy");
+        assert_eq!(
+            CratePaths::resolve(&input.attrs).wifi_caddy.to_string(),
+            "wifi_caddy"
+        );
 
         let input: syn::DeriveInput =
             syn::parse_str("#[config_crate(\"crate\")] struct S { f: u32 }").unwrap();

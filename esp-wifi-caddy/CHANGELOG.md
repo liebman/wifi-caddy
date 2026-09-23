@@ -70,6 +70,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **The flash storage buffer now holds a whole item, not just a value.**
+  `sequential_storage` stores the 8-byte map key and the value as a single item,
+  rounded up to the 4-byte flash word size, but this buffer was sized to
+  `config_storage::MAX_VALUE_SIZE` exactly — 8 bytes short of the largest value
+  the config API accepts. A long `String` field could therefore be accepted by
+  `ConfigStorage::set_value` and then rejected by the backend (and, once in flash,
+  be impossible to read back: `load_from` fails, so `wifi_init!` returns `Err` at
+  boot). The buffer is now `(MAX_VALUE_SIZE + 8).next_multiple_of(4)`, so raising
+  `WIFI_CADDY_MAX_VALUE_SIZE` (see the `wifi-caddy` changelog) makes a value of
+  exactly that size round-trip.
+
 - **The Wi-Fi connection task no longer busy-loops while the station is not
   connected.** `WifiController::wait_for_disconnect_async` resolves immediately
   with `WifiError::NotConnected` in that state, so the task's `select3` completed
