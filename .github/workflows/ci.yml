@@ -20,6 +20,37 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # The two manifests patch `esp-*` to the same esp-hal revision, and both
+      # Cargo.lock files record it. They have to move together: if they drift, the
+      # jobs build different esp-hal code and `--locked` fails with a lock error
+      # that points at the wrong cause.
+      - name: Check esp-hal patch revisions agree
+        run: |
+          set -euo pipefail
+          rev_of() {
+            sed -nE \
+              's|^esp-hal = \{ git = "https://github\.com/esp-rs/esp-hal", rev = "([0-9a-f]+)" \}$|\1|p' \
+              "$1" | head -n1
+          }
+          example=$(rev_of examples/wifi-example/Cargo.toml)
+          lib=$(rev_of esp-wifi-caddy/Cargo.toml)
+          echo "examples/wifi-example: ${example:-<none>}"
+          echo "esp-wifi-caddy:        ${lib:-<none>}"
+          if [ -z "$example" ] || [ -z "$lib" ]; then
+            echo "::error::no esp-hal [patch] revision found in one of the manifests"
+            exit 1
+          fi
+          if [ "$example" != "$lib" ]; then
+            echo "::error::esp-hal revisions differ: example=$example esp-wifi-caddy=$lib"
+            exit 1
+          fi
+          for lock in examples/wifi-example/Cargo.lock esp-wifi-caddy/Cargo.lock; do
+            if ! grep -q "esp-hal?rev=${example}#" "$lock"; then
+              echo "::error::$lock is not locked to esp-hal rev $example — regenerate it after bumping the patch"
+              exit 1
+            fi
+          done
+
       - name: Install RISC-V toolchain
         uses: dtolnay/rust-toolchain@v1
         with:
@@ -35,33 +66,35 @@ jobs:
           cache-all-crates: true
 
       - name: Check wifi-caddy
-        run: cargo check --target riscv32imac-unknown-none-elf
+        run: cargo check --locked --target riscv32imac-unknown-none-elf
         working-directory: wifi-caddy
 
       - name: Test wifi-caddy
-        run: cargo test 
+        run: cargo test --locked
         working-directory: wifi-caddy
 
       - name: Check wifi-caddy-proc
-        run: cargo check
+        run: cargo check --locked
         working-directory: wifi-caddy-proc
 
       - name: Test wifi-caddy-proc
-        run: cargo test
+        run: cargo test --locked
         working-directory: wifi-caddy-proc
 
       # Compile-only coverage for every Wi-Fi capable RISC-V chip. esp32c61 and
       # esp32s31 are kept here even though the example cannot link for them yet:
       # the crate itself compiles for both (build-example builds esp32, esp32s3
       # and the other RISC-V chips end to end; esp32s2 is skipped everywhere, see
-      # the build-example matrix).
+      # the build-example matrix). This package build resolves the `esp-*` crates
+      # through its own `[patch.crates-io]` (see the note in the workflow env), so
+      # it needs GitHub access for the pinned esp-hal commit too.
       - name: Check esp-wifi-caddy (all RISC-V chips)
         working-directory: esp-wifi-caddy
         run: |
           set -e
           check() {
             echo "::group::esp-wifi-caddy --features $1 ($2)"
-            cargo check --target "$2" --features "$1"
+            cargo check --locked --target "$2" --features "$1"
             echo "::endgroup::"
           }
           check esp32c2  riscv32imc-unknown-none-elf
@@ -163,9 +196,13 @@ jobs:
           prefix-key: "ci-${{ matrix.target }}"
           cache-all-crates: true
 
+      # `--locked`: the committed Cargo.lock pins the esp-hal / esp-pacs /
+      # esp-wifi-sys git revisions (see the workflow env note). Without it a
+      # manifest revision bump would silently re-resolve and build a different
+      # esp-hal than the one the lock records.
       - name: Build wifi-example
         working-directory: examples/wifi-example
         env:
           RUSTFLAGS: ${{ matrix.rustflags }}
         run: |
-          cargo ${{ matrix.toolchain }} build --release --target ${{ matrix.rust_target }} --no-default-features --features "${{ matrix.target }},${{ matrix.features }}" ${{ matrix.cargo_unstable }}
+          cargo ${{ matrix.toolchain }} build --locked --release --target ${{ matrix.rust_target }} --no-default-features --features "${{ matrix.target }},${{ matrix.features }}" ${{ matrix.cargo_unstable }}
