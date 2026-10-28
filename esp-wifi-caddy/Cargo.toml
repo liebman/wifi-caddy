@@ -46,7 +46,6 @@ esp32 = [
     "esp-hal/esp32",
     "esp-rtos/esp32",
     "esp-radio/esp32",
-    "esp-storage/esp32",
     "esp-alloc/esp32",
     "esp-bootloader-esp-idf/esp32",
 ]
@@ -54,7 +53,6 @@ esp32c2 = [
     "esp-hal/esp32c2",
     "esp-rtos/esp32c2",
     "esp-radio/esp32c2",
-    "esp-storage/esp32c2",
     "esp-alloc/esp32c2",
     "esp-bootloader-esp-idf/esp32c2",
 ]
@@ -62,7 +60,6 @@ esp32c3 = [
     "esp-hal/esp32c3",
     "esp-rtos/esp32c3",
     "esp-radio/esp32c3",
-    "esp-storage/esp32c3",
     "esp-alloc/esp32c3",
     "esp-bootloader-esp-idf/esp32c3",
 ]
@@ -70,7 +67,6 @@ esp32c5 = [
     "esp-hal/esp32c5",
     "esp-rtos/esp32c5",
     "esp-radio/esp32c5",
-    "esp-storage/esp32c5",
     "esp-alloc/esp32c5",
     "esp-bootloader-esp-idf/esp32c5",
 ]
@@ -78,7 +74,6 @@ esp32c6 = [
     "esp-hal/esp32c6",
     "esp-rtos/esp32c6",
     "esp-radio/esp32c6",
-    "esp-storage/esp32c6",
     "esp-alloc/esp32c6",
     "esp-bootloader-esp-idf/esp32c6",
 ]
@@ -86,7 +81,6 @@ esp32c61 = [
     "esp-hal/esp32c61",
     "esp-rtos/esp32c61",
     "esp-radio/esp32c61",
-    "esp-storage/esp32c61",
     "esp-alloc/esp32c61",
     "esp-bootloader-esp-idf/esp32c61",
 ]
@@ -94,7 +88,6 @@ esp32s2 = [
     "esp-hal/esp32s2",
     "esp-rtos/esp32s2",
     "esp-radio/esp32s2",
-    "esp-storage/esp32s2",
     "esp-alloc/esp32s2",
     "esp-bootloader-esp-idf/esp32s2",
 ]
@@ -102,7 +95,6 @@ esp32s3 = [
     "esp-hal/esp32s3",
     "esp-rtos/esp32s3",
     "esp-radio/esp32s3",
-    "esp-storage/esp32s3",
     "esp-alloc/esp32s3",
     "esp-bootloader-esp-idf/esp32s3",
 ]
@@ -112,7 +104,6 @@ esp32s31 = [
     "esp-hal/esp32s31",
     "esp-rtos/esp32s31",
     "esp-radio/esp32s31",
-    "esp-storage/esp32s31",
     "esp-alloc/esp32s31",
     "esp-bootloader-esp-idf/esp32s31",
 ]
@@ -146,7 +137,11 @@ embassy-net = { version = "0.9.0", features = [
     "dns",
 ] }
 
-esp-hal = { version = "~1.2.2", features = ["unstable"] }
+# The local `../esp-hal` checkout is on `main`, where esp-hal still declares
+# 1.2.0 (1.2.1/1.2.2 were released from the `esp-hal-1.2.x` maintenance branch),
+# so the requirement has to admit 1.2.x rather than ~1.2.2. crates.io resolves
+# the newest 1.2.x either way.
+esp-hal = { version = "~1.2.0", features = ["unstable"] }
 esp-alloc = "0.11.0"
 esp-rtos = { version = "0.4.0", features = [
     "embassy",
@@ -157,7 +152,9 @@ esp-rtos = { version = "0.4.0", features = [
 # `WifiController::subscribe()`, which the connection task uses to wait for a STA
 # disconnect without busy-looping (see `wait_for_sta_disconnect` in src/lib.rs).
 # `esp-hal/unstable` is enabled unconditionally for the same kind of need.
-esp-radio = { version = "=1.0.0-beta.1", features = ["wifi", "unstable"] }
+# beta.2 is what the local `../esp-hal` checkout (and the S31 fix it carries)
+# provides; beta.2 changed nothing else that this crate uses.
+esp-radio = { version = "=1.0.0-beta.2", features = ["wifi", "unstable"] }
 
 defmt = { version = "1.0.1", optional = true }
 log = { version = "0.4", optional = true }
@@ -169,6 +166,24 @@ heapless = "0.9"
 embedded-io-async = { version = "0.7" }
 sequential-storage = { version = "7.0.1", features = ["alloc"] }
 embassy-embedded-hal = { version = "0.6.0", features = ["time"] }
-esp-storage = { version = "0.10.0", features = ["embedded-storage"] }
+esp-bootloader-esp-idf = { version = "0.6.0", default-features = false, features = [
+    "embedded-storage",
+] }
 
-esp-bootloader-esp-idf = { version = "0.6.0", default-features = false }
+
+[patch.crates-io]
+# esp-alloc = { path = "../esp-hal/esp-alloc" }
+# esp-backtrace = { path = "../esp-hal/esp-backtrace" }
+# esp-bootloader-esp-idf = { path = "../esp-hal/esp-bootloader-esp-idf" }
+# esp-hal = { path = "../esp-hal/esp-hal" }
+# esp-println = { path = "../esp-hal/esp-println" }
+# esp-radio = { path = "../esp-hal/esp-radio" }
+# esp-rtos = { path = "../esp-hal/esp-rtos" }
+
+esp-alloc = { git = "https://github.com/esp-rs/esp-hal", rev = "5c0820cf9e2be0a49719bd71c30e7a45cae48134" }
+esp-backtrace = { git = "https://github.com/esp-rs/esp-hal", rev = "5c0820cf9e2be0a49719bd71c30e7a45cae48134" }
+esp-bootloader-esp-idf = { git = "https://github.com/esp-rs/esp-hal", rev = "5c0820cf9e2be0a49719bd71c30e7a45cae48134" }
+esp-hal = { git = "https://github.com/esp-rs/esp-hal", rev = "5c0820cf9e2be0a49719bd71c30e7a45cae48134" }
+esp-println = { git = "https://github.com/esp-rs/esp-hal", rev = "5c0820cf9e2be0a49719bd71c30e7a45cae48134" }
+esp-radio = { git = "https://github.com/esp-rs/esp-hal", rev = "5c0820cf9e2be0a49719bd71c30e7a45cae48134" }
+esp-rtos = { git = "https://github.com/esp-rs/esp-hal", rev = "5c0820cf9e2be0a49719bd71c30e7a45cae48134" }

@@ -26,10 +26,11 @@ use embassy_time::Duration;
 use embassy_time::Timer;
 use esp_alloc as _;
 use esp_backtrace as _;
+use esp_hal::Blocking;
+use esp_hal::flash::Flash;
 use esp_hal::gpio::{InputConfig, Pull};
 use esp_hal::timer::timg::TimerGroup;
 use esp_println as _;
-use esp_storage::FlashStorage;
 use esp_wifi_caddy::{ConfigHandle, WifiApSsidPrefix, WifiCaddyConfig, WifiPass, WifiSsid};
 #[cfg(not(feature = "defmt"))]
 use log::info;
@@ -133,14 +134,18 @@ async fn main(spawner: Spawner) {
     esp_alloc::heap_allocator!(size: 16 * 1024);
 
     let timg0 = TimerGroup::new(peripherals.TIMG0);
-    esp_rtos::start(timg0.timer0, peripherals.FROM_CPU_INTR0);
+    // esp-rtos on esp-hal `main` no longer takes the FROM_CPU_INTR0 singleton
+    // (upstream esp-rs/esp-hal#6221, already in the 1.0.0-beta.2 tag but not in
+    // the crates.io esp-rtos 0.4.0 release): the scheduler's IPC interrupt is
+    // claimed internally now.
+    esp_rtos::start(timg0.timer0);
 
     info!("wifi-example starting");
 
-    let flash = FlashStorage::new(peripherals.FLASH);
-
-    #[cfg(any(feature = "esp32s3", feature = "esp32"))]
-    let flash = flash.multicore_auto_park();
+    // The config storage borrows the driver for the whole program, so it lives in
+    // a static.
+    let flash = Flash::new(peripherals.FLASH, Default::default()).expect("flash driver");
+    let flash = esp_wifi_caddy::mk_static!(Flash<'static, Blocking>, flash);
 
     let (wifi_stacks, wifi_sender, config, config_rx) =
         esp_wifi_caddy::wifi_init!(AppConfig, spawner, peripherals.WIFI, flash, "config")

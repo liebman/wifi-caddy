@@ -4,10 +4,8 @@
 //! `"__magic__"` and `"__format_version__"`). Values are passed in via
 //! `ConfigStorageParams`.
 
-use core::ops::Range;
-
 use embassy_embedded_hal::adapter::BlockingAsync;
-use esp_storage::FlashStorage;
+use esp_bootloader_esp_idf::partitions::FlashRegion;
 use sequential_storage::cache::NoCache;
 use sequential_storage::map::MapConfig;
 use sequential_storage::map::MapStorage;
@@ -45,10 +43,11 @@ const _: () = {
 /// eight little-endian bytes.
 const KEY_SIZE: usize = 8;
 
-/// Flash word size in bytes — `READ_SIZE`/`WRITE_SIZE` of `esp-storage`'s
-/// `NorFlash` impl (4 on every ESP chip). `sequential_storage` rounds an item up
-/// to this when reading it back, so the buffer has to cover that padding as well.
-const FLASH_WORD_SIZE: usize = <FlashStorage<'static>>::WORD_SIZE as usize;
+/// Flash write granularity in bytes — `FlashRegion`'s
+/// `WRITE_SIZE` (the `esp_hal::flash::Flash` word size, 4 on every ESP chip).
+/// `sequential_storage` rounds an item up to this when reading it back, so the
+/// buffer has to cover that padding as well.
+const FLASH_WORD_SIZE: usize = 4;
 
 /// Internal buffer size for `sequential_storage` fetch/store operations.
 ///
@@ -76,7 +75,7 @@ pub struct Mounted;
 /// transition to `Mounted`.
 #[doc(hidden)]
 pub struct FlashConfigStorage<'d, S = Unmounted> {
-    storage: MapStorage<u64, BlockingAsync<FlashStorage<'d>>, NoCache>,
+    storage: MapStorage<u64, BlockingAsync<FlashRegion<'d, 'd>>, NoCache>,
     _state: core::marker::PhantomData<S>,
 }
 
@@ -150,11 +149,15 @@ impl<'d, S> FlashConfigStorage<'d, S> {
 }
 
 impl<'d> FlashConfigStorage<'d, Unmounted> {
-    /// Create storage over the given flash range.
-    pub fn new(flash: FlashStorage<'d>, range: Range<u32>) -> Self {
+    /// Create storage over the given partition region.
+    ///
+    /// Offsets are relative to the region, so the map starts at 0 and ends at the
+    /// partition size.
+    pub fn new(region: FlashRegion<'d, 'd>) -> Self {
+        let range = 0..region.capacity() as u32;
         Self {
             storage: MapStorage::new(
-                BlockingAsync::new(flash),
+                BlockingAsync::new(region),
                 MapConfig::new(range),
                 NoCache::new(),
             ),

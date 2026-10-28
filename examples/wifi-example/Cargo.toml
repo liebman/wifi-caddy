@@ -33,7 +33,6 @@ defmt = [
     "esp-backtrace/defmt",
     "esp-rtos/defmt",
     "esp-println/defmt-espflash",
-    "esp-storage/defmt",
     "esp-wifi-caddy/defmt",
 ]
 log = [
@@ -53,7 +52,6 @@ esp32 = [
     "esp-println/esp32",
     "esp-rtos/esp32",
     "esp-bootloader-esp-idf/esp32",
-    "esp-storage/esp32",
 ]
 esp32s2 = [
     "esp-wifi-caddy/esp32s2",
@@ -62,7 +60,6 @@ esp32s2 = [
     "esp-println/esp32s2",
     "esp-rtos/esp32s2",
     "esp-bootloader-esp-idf/esp32s2",
-    "esp-storage/esp32s2",
 ]
 esp32s3 = [
     "esp-wifi-caddy/esp32s3",
@@ -71,7 +68,6 @@ esp32s3 = [
     "esp-println/esp32s3",
     "esp-rtos/esp32s3",
     "esp-bootloader-esp-idf/esp32s3",
-    "esp-storage/esp32s3",
 ]
 esp32c2 = [
     "esp-wifi-caddy/esp32c2",
@@ -80,7 +76,6 @@ esp32c2 = [
     "esp-println/esp32c2",
     "esp-rtos/esp32c2",
     "esp-bootloader-esp-idf/esp32c2",
-    "esp-storage/esp32c2",
 ]
 esp32c3 = [
     "esp-wifi-caddy/esp32c3",
@@ -89,7 +84,6 @@ esp32c3 = [
     "esp-println/esp32c3",
     "esp-rtos/esp32c3",
     "esp-bootloader-esp-idf/esp32c3",
-    "esp-storage/esp32c3",
 ]
 esp32c5 = [
     "esp-wifi-caddy/esp32c5",
@@ -98,7 +92,6 @@ esp32c5 = [
     "esp-println/esp32c5",
     "esp-rtos/esp32c5",
     "esp-bootloader-esp-idf/esp32c5",
-    "esp-storage/esp32c5",
 ]
 esp32c6 = [
     "esp-wifi-caddy/esp32c6",
@@ -107,7 +100,6 @@ esp32c6 = [
     "esp-println/esp32c6",
     "esp-rtos/esp32c6",
     "esp-bootloader-esp-idf/esp32c6",
-    "esp-storage/esp32c6",
 ]
 esp32c61 = [
     "esp-wifi-caddy/esp32c61",
@@ -116,7 +108,6 @@ esp32c61 = [
     "esp-println/esp32c61",
     "esp-rtos/esp32c61",
     "esp-bootloader-esp-idf/esp32c61",
-    "esp-storage/esp32c61",
 ]
 esp32s31 = [
     "esp-wifi-caddy/esp32s31",
@@ -125,7 +116,6 @@ esp32s31 = [
     "esp-println/esp32s31",
     "esp-rtos/esp32s31",
     "esp-bootloader-esp-idf/esp32s31",
-    "esp-storage/esp32s31",
 ]
 debug-server = ["esp-wifi-caddy/debug-server"]
 
@@ -135,13 +125,7 @@ esp-wifi-caddy = { path = "../../esp-wifi-caddy" }
 # derive resolves its own crate by name.
 enumset = { version = "1.1.10" }
 
-esp-storage = { version = "0.10.0" }
-
-# Keep this in sync with the local checkout patched in [patch.crates-io] below: a
-# patch only takes effect when its version satisfies this requirement, otherwise
-# cargo silently pulls a second `esp_hal` from crates.io (duplicate types + a
-# second `esp-hal-procmacros` without `__esp_idf_bootloader`).
-esp-hal = { version = "~1.2.2", features = ["unstable"] }
+esp-hal = { version = "~1.2.0", features = ["unstable"] }
 esp-alloc = { version = "0.11.0" }
 esp-rtos = { version = "0.4.0", features = [
     "embassy",
@@ -166,18 +150,19 @@ defmt = { version = "1.0.1", optional = true }
 esp-println = "0.18.0"
 log = { version = "0.4", optional = true }
 
-# [patch.crates-io]
+[patch.crates-io]
 # esp-alloc = { path = "../../../esp-hal/esp-alloc" }
 # esp-backtrace = { path = "../../../esp-hal/esp-backtrace" }
 # esp-bootloader-esp-idf = { path = "../../../esp-hal/esp-bootloader-esp-idf" }
 # esp-hal = { path = "../../../esp-hal/esp-hal" }
-# esp-phy = { path = "../../../esp-hal/esp-phy" }
 # esp-println = { path = "../../../esp-hal/esp-println" }
 # esp-radio = { path = "../../../esp-hal/esp-radio" }
-# esp-radio-rtos-driver = { path = "../../../esp-hal/esp-radio-rtos-driver" }
-# esp-riscv-rt = { path = "../../../esp-hal/esp-riscv-rt" }
-# esp-rom-sys = { path = "../../../esp-hal/esp-rom-sys" }
 # esp-rtos = { path = "../../../esp-hal/esp-rtos" }
-# esp-storage = { path = "../../../esp-hal/esp-storage" }
-# esp-sync = { path = "../../../esp-hal/esp-sync" }
-# xtensa-lx-rt = { path = "../../../esp-hal/xtensa-lx-rt" }
+
+esp-alloc = { git = "https://github.com/esp-rs/esp-hal", rev = "5c0820cf9e2be0a49719bd71c30e7a45cae48134" }
+esp-backtrace = { git = "https://github.com/esp-rs/esp-hal", rev = "5c0820cf9e2be0a49719bd71c30e7a45cae48134" }
+esp-bootloader-esp-idf = { git = "https://github.com/esp-rs/esp-hal", rev = "5c0820cf9e2be0a49719bd71c30e7a45cae48134" }
+esp-hal = { git = "https://github.com/esp-rs/esp-hal", rev = "5c0820cf9e2be0a49719bd71c30e7a45cae48134" }
+esp-println = { git = "https://github.com/esp-rs/esp-hal", rev = "5c0820cf9e2be0a49719bd71c30e7a45cae48134" }
+esp-radio = { git = "https://github.com/esp-rs/esp-hal", rev = "5c0820cf9e2be0a49719bd71c30e7a45cae48134" }
+esp-rtos = { git = "https://github.com/esp-rs/esp-hal", rev = "5c0820cf9e2be0a49719bd71c30e7a45cae48134" }
