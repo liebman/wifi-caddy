@@ -37,19 +37,24 @@ header p {
     padding: 15px 30px;
     border-bottom: 1px solid #e0e0e0;
     display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
     justify-content: space-between;
     align-items: center;
 }
+/* Navigation entries are links to another page of the portal (for example the
+   firmware upload), so they are styled as buttons rather than as body links. */
 .nav a {
-    color: #667eea;
+    color: #fff;
+    background: #667eea;
     text-decoration: none;
-    font-weight: 500;
+    font-weight: 600;
     padding: 8px 16px;
     border-radius: 6px;
     transition: background 0.3s;
 }
 .nav a:hover {
-    background: #e9ecef;
+    background: #5568d3;
 }
 .content {
     padding: 30px;
@@ -177,6 +182,9 @@ button[type="button"]:hover {
 }
 .config-tabs {
     display: flex;
+    /* Wrap instead of overflowing: a phone-sized viewport cannot hold every tab
+       on one line, and the container clips what does not fit. */
+    flex-wrap: wrap;
     gap: 8px;
     padding: 15px 0;
     border-bottom: 1px solid #e0e0e0;

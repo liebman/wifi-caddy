@@ -38,6 +38,27 @@ mod partition;
 mod storage;
 mod wifi;
 
+#[cfg(feature = "firmware-update")]
+pub mod ota;
+
+/// Starts the firmware-update reboot task.
+///
+/// This is a no-op without the `firmware-update` feature. The decision is made in
+/// this crate rather than in the caller, because a `cfg` in an expanded macro
+/// would test the *consumer's* features, which need not use the same names.
+#[doc(hidden)]
+pub fn spawn_reboot_task(spawner: embassy_executor::Spawner) -> Result<(), Error> {
+    #[cfg(feature = "firmware-update")]
+    {
+        spawner.spawn(ota::reboot_task().map_err(|_| Error::SpawnHttpWorker)?);
+    }
+
+    #[cfg(not(feature = "firmware-update"))]
+    let _ = spawner;
+
+    Ok(())
+}
+
 // Re-export platform-agnostic types from wifi-caddy for backward compatibility
 pub use wifi_caddy::ConfigHandle;
 pub use wifi_caddy::ConfigStorageParams;
@@ -595,10 +616,20 @@ async fn ap_task(mut runner: Runner<'static, Interface>) {
 #[macro_export]
 macro_rules! wifi_init {
     ($Config:ty, $spawner:expr, $wifi:expr, $flash:expr, $partition:expr) => {{
+        $crate::wifi_init!(
+            $Config,
+            $spawner,
+            $wifi,
+            $flash,
+            $partition,
+            firmware: ()
+        )
+    }};
+    ($Config:ty, $spawner:expr, $wifi:expr, $flash:expr, $partition:expr, firmware: $Firmware:ty) => {{
         match $crate::mount_and_load_by_partition::<$Config>($flash, $partition).await {
             Err(e) => Err(e),
             Ok((config, storage)) => {
-                $crate::_wifi_init_body!($Config, $spawner, $wifi, config, storage)
+                $crate::_wifi_init_body!($Config, $spawner, $wifi, config, storage, $Firmware)
             }
         }
     }};
@@ -626,10 +657,20 @@ macro_rules! wifi_init {
 #[macro_export]
 macro_rules! wifi_init_raw {
     ($Config:ty, $spawner:expr, $wifi:expr, $flash:expr, $range:expr) => {{
+        $crate::wifi_init_raw!(
+            $Config,
+            $spawner,
+            $wifi,
+            $flash,
+            $range,
+            firmware: ()
+        )
+    }};
+    ($Config:ty, $spawner:expr, $wifi:expr, $flash:expr, $range:expr, firmware: $Firmware:ty) => {{
         match $crate::mount_and_load::<$Config>($flash, $range).await {
             Err(e) => Err(e),
             Ok((config, storage)) => {
-                $crate::_wifi_init_body!($Config, $spawner, $wifi, config, storage)
+                $crate::_wifi_init_body!($Config, $spawner, $wifi, config, storage, $Firmware)
             }
         }
     }};
@@ -643,8 +684,8 @@ macro_rules! wifi_init_raw {
 #[doc(hidden)]
 #[macro_export]
 macro_rules! _wifi_init_body {
-    ($Config:ty, $spawner:expr, $wifi:expr, $config:expr, $storage:expr) => {{
-        $crate::_wifi_init_workers!($Config);
+    ($Config:ty, $spawner:expr, $wifi:expr, $config:expr, $storage:expr, $Firmware:ty) => {{
+        $crate::_wifi_init_workers!($Config, $Firmware);
         let (config_rx, notify_sender) =
             <$Config as $crate::config_storage::ConfigServer>::init_notify();
         let config_mutex = $crate::mk_static!(
@@ -683,7 +724,7 @@ macro_rules! _wifi_init_body {
 #[doc(hidden)]
 #[macro_export]
 macro_rules! _wifi_init_debug_worker {
-    ($Config:ty, $spawner:expr, $sta_stack:expr, $config:expr, $io:expr, $notify:expr) => {
+    ($Config:ty, $spawner:expr, $sta_stack:expr, $config:expr, $io:expr, $notify:expr, $Firmware:ty) => {
         #[embassy_executor::task]
         async fn _config_http_worker_debug(
             stack: $crate::embassy_net::Stack<'static>,
@@ -703,6 +744,7 @@ macro_rules! _wifi_init_debug_worker {
             $crate::run_http_debug_loop::<
                 $Config,
                 $crate::FlashConfigStorage<'static, $crate::Mounted>,
+                $Firmware,
             >(stack, config, io, notify)
             .await
         }
@@ -718,7 +760,7 @@ macro_rules! _wifi_init_debug_worker {
 #[doc(hidden)]
 #[macro_export]
 macro_rules! _wifi_init_debug_worker {
-    ($Config:ty, $spawner:expr, $sta_stack:expr, $config:expr, $io:expr, $notify:expr) => {};
+    ($Config:ty, $spawner:expr, $sta_stack:expr, $config:expr, $io:expr, $notify:expr, $Firmware:ty) => {};
 }
 
 // ---------------------------------------------------------------------------
@@ -728,7 +770,7 @@ macro_rules! _wifi_init_debug_worker {
 #[doc(hidden)]
 #[macro_export]
 macro_rules! _wifi_init_workers {
-    ($Config:ty) => {
+    ($Config:ty, $Firmware:ty) => {
         #[embassy_executor::task]
         async fn _config_http_worker(
             stack: $crate::embassy_net::Stack<'static>,
@@ -748,6 +790,7 @@ macro_rules! _wifi_init_workers {
             $crate::run_http_config_loop::<
                 $Config,
                 $crate::FlashConfigStorage<'static, $crate::Mounted>,
+                $Firmware,
             >(stack, config, io, notify)
             .await
         }
@@ -769,11 +812,12 @@ macro_rules! _wifi_init_workers {
                 <$Config as $crate::config_storage::ConfigApi>::ChangedSet,
             >,
         ) -> Result<(), $crate::Error> {
+            $crate::spawn_reboot_task(s)?;
             s.spawn(
                 _config_http_worker(ap_stack, config, io, notify)
                     .map_err(|_| $crate::Error::SpawnHttpWorker)?,
             );
-            $crate::_wifi_init_debug_worker!($Config, s, _sta_stack, config, io, notify);
+            $crate::_wifi_init_debug_worker!($Config, s, _sta_stack, config, io, notify, $Firmware);
             Ok(())
         }
     };

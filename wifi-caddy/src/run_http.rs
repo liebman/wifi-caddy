@@ -3,19 +3,22 @@
 use crate::config_storage::{ConfigStorage, ConfigType};
 use crate::portal;
 use crate::portal::config_ui::ConfigHandler;
+use crate::portal::firmware::FirmwareSink;
 use embassy_net::Stack;
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::channel::DynamicSender;
 use embassy_sync::mutex::Mutex;
 
-/// Build a `ConfigHandler` from the shared config/io mutexes,
+/// Build a [`ConfigHandler`] from the shared config/io mutexes,
 /// then run the HTTP server on the given stack.
 ///
-/// Generic over the storage backend `S: ConfigStorage + Send`.
+/// Generic over the storage backend `S: ConfigStorage + Send` and the firmware
+/// sink `F`, which is constructed with [`Default`]: applications without update
+/// support pass `()`.
 /// edge-http `Server::run` manages concurrent handlers internally, so this
 /// replaces the old multi-task worker pool with a single embassy task.
 #[doc(hidden)]
-pub async fn run_http_config_loop<C, S>(
+pub async fn run_http_config_loop<C, S, F>(
     stack: Stack<'static>,
     config: &'static Mutex<CriticalSectionRawMutex, C>,
     io: &'static Mutex<CriticalSectionRawMutex, S>,
@@ -24,6 +27,7 @@ pub async fn run_http_config_loop<C, S>(
     C: ConfigType + Send,
     C::ChangedSet: Send,
     S: ConfigStorage + Send,
+    F: FirmwareSink<S> + Default,
 {
     info!("Starting HTTP config server...");
 
@@ -33,6 +37,7 @@ pub async fn run_http_config_loop<C, S>(
         notify,
         #[cfg(feature = "captive")]
         captive: true,
+        firmware: F::default(),
     };
 
     portal::serve_loop(stack, handler).await;
@@ -43,7 +48,7 @@ pub async fn run_http_config_loop<C, S>(
 /// Waits for the STA stack to obtain an IPv4 address, then enters `serve_loop_debug`.
 #[cfg(feature = "debug-server")]
 #[doc(hidden)]
-pub async fn run_http_debug_loop<C, S>(
+pub async fn run_http_debug_loop<C, S, F>(
     stack: Stack<'static>,
     config: &'static Mutex<CriticalSectionRawMutex, C>,
     io: &'static Mutex<CriticalSectionRawMutex, S>,
@@ -52,6 +57,7 @@ pub async fn run_http_debug_loop<C, S>(
     C: ConfigType + Send,
     C::ChangedSet: Send,
     S: ConfigStorage + Send,
+    F: FirmwareSink<S> + Default,
 {
     info!("Debug HTTP server: waiting for STA IP...");
     let cfg = loop {
@@ -74,6 +80,7 @@ pub async fn run_http_debug_loop<C, S>(
         notify,
         #[cfg(feature = "captive")]
         captive: false,
+        firmware: F::default(),
     };
 
     portal::serve_loop_debug(stack, handler).await;

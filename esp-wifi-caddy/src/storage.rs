@@ -5,7 +5,7 @@
 //! `ConfigStorageParams`.
 
 use embassy_embedded_hal::adapter::BlockingAsync;
-use esp_bootloader_esp_idf::partitions::FlashRegion;
+use esp_bootloader_esp_idf::partitions::{FlashRegion, FlashStorage, PartitionEntry};
 use sequential_storage::cache::NoCache;
 use sequential_storage::map::MapConfig;
 use sequential_storage::map::MapStorage;
@@ -73,21 +73,68 @@ pub struct Mounted;
 /// Create with [`new`](FlashConfigStorage::new) (returns `Unmounted`), then call
 /// [`mount`](FlashConfigStorage::mount) to validate/format the partition and
 /// transition to `Mounted`.
+///
+/// The storage borrows the flash driver and the config partition's
+/// [`PartitionEntry`] rather than a [`FlashRegion`], and builds the region for one
+/// operation at a time. A region borrows the driver for as long as it lives, so
+/// holding one for the whole program would lend the driver away for good; keeping
+/// the driver instead leaves it reachable for the other users of the same flash,
+/// such as the firmware update writer.
 #[doc(hidden)]
 pub struct FlashConfigStorage<'d, S = Unmounted> {
-    storage: MapStorage<u64, BlockingAsync<FlashRegion<'d, 'd>>, NoCache>,
+    flash: &'d mut FlashStorage<'d>,
+    entry: PartitionEntry,
+    /// Upload state of a firmware update in progress.
+    ///
+    /// It lives in a static of its own and the storage only borrows it, so the
+    /// staging buffer does not make this struct large; a firmware update needs no
+    /// lock either, because the portal holds the storage lock while it drives the
+    /// sink.
+    #[cfg(feature = "firmware-update")]
+    firmware: &'static mut crate::ota::Upload,
     _state: core::marker::PhantomData<S>,
 }
 
 impl<'d, S> FlashConfigStorage<'d, S> {
+    /// Builds the key-value map over the config partition for one operation.
+    ///
+    /// Offsets are relative to the partition, so the map starts at 0 and ends at
+    /// the partition size. Nothing carries over between operations: `NoCache`
+    /// holds no state and the region is rebuilt from `entry`, so a fresh map per
+    /// operation behaves like a long-lived one.
+    fn map(
+        &mut self,
+    ) -> Result<MapStorage<u64, BlockingAsync<FlashRegion<'_, 'd>>, NoCache>, ConfigError> {
+        // Read the length before the region borrows the driver.
+        let len = self.entry.len();
+        let region = self
+            .entry
+            .as_flash_region(&mut *self.flash)
+            .map_err(|_| ConfigError::Backend)?;
+        Ok(MapStorage::new(
+            BlockingAsync::new(region),
+            MapConfig::new(0..len),
+            NoCache::new(),
+        ))
+    }
+
+    /// Returns the flash driver and the firmware-update state together.
+    ///
+    /// The two are disjoint fields, so an update can write to the flash while it
+    /// tracks its own progress, under the lock the caller already holds.
+    #[cfg(feature = "firmware-update")]
+    pub fn update(&mut self) -> (&mut FlashStorage<'d>, &mut crate::ota::Upload) {
+        (&mut *self.flash, &mut *self.firmware)
+    }
+
     async fn load_bytes_inner(
         &mut self,
         key: u64,
         buf: &mut [u8],
     ) -> Result<Option<usize>, ConfigError> {
         let mut internal_buf = [0u8; BUFFER_SIZE];
-        let value: Option<&[u8]> = self
-            .storage
+        let mut map = self.map()?;
+        let value: Option<&[u8]> = map
             .fetch_item(&mut internal_buf, &key)
             .await
             .map_err(|_| ConfigError::Backend)?;
@@ -103,17 +150,16 @@ impl<'d, S> FlashConfigStorage<'d, S> {
 
     async fn store_bytes_inner(&mut self, key: u64, bytes: &[u8]) -> Result<(), ConfigError> {
         let mut buffer = [0u8; BUFFER_SIZE];
+        let mut map = self.map()?;
         let needs_write = {
-            let current: Option<&[u8]> = self
-                .storage
+            let current: Option<&[u8]> = map
                 .fetch_item(&mut buffer, &key)
                 .await
                 .map_err(|_| ConfigError::Backend)?;
             !matches!(current, Some(existing) if existing.len() == bytes.len() && existing == bytes)
         };
         if needs_write {
-            self.storage
-                .store_item(&mut buffer, &key, &bytes)
+            map.store_item(&mut buffer, &key, &bytes)
                 .await
                 .map_err(|_| ConfigError::Backend)
         } else {
@@ -137,8 +183,8 @@ impl<'d, S> FlashConfigStorage<'d, S> {
 
     async fn format(&mut self, params: &ConfigStorageParams) -> Result<(), ConfigError> {
         warn!("storage: Formatting config storage!");
-        self.storage
-            .erase_all()
+        let mut map = self.map()?;
+        map.erase_all()
             .await
             .map_err(|_| ConfigError::Backend)?;
         self.set_value(MAGIC_KEY_U64, &params.magic).await?;
@@ -149,18 +195,20 @@ impl<'d, S> FlashConfigStorage<'d, S> {
 }
 
 impl<'d> FlashConfigStorage<'d, Unmounted> {
-    /// Create storage over the given partition region.
+    /// Create storage over a flash driver and the config partition's entry.
     ///
-    /// Offsets are relative to the region, so the map starts at 0 and ends at the
-    /// partition size.
-    pub fn new(region: FlashRegion<'d, 'd>) -> Self {
-        let range = 0..region.capacity() as u32;
+    /// The entry selects the partition; offsets are relative to it, so the map
+    /// starts at 0 and ends at the partition size.
+    pub fn new(
+        flash: &'d mut FlashStorage<'d>,
+        entry: PartitionEntry,
+        #[cfg(feature = "firmware-update")] firmware: &'static mut crate::ota::Upload,
+    ) -> Self {
         Self {
-            storage: MapStorage::new(
-                BlockingAsync::new(region),
-                MapConfig::new(range),
-                NoCache::new(),
-            ),
+            flash,
+            entry,
+            #[cfg(feature = "firmware-update")]
+            firmware,
             _state: core::marker::PhantomData,
         }
     }
@@ -203,7 +251,10 @@ impl<'d> FlashConfigStorage<'d, Unmounted> {
             return Err(ConfigError::Backend);
         }
         Ok(FlashConfigStorage {
-            storage: self.storage,
+            flash: self.flash,
+            entry: self.entry,
+            #[cfg(feature = "firmware-update")]
+            firmware: self.firmware,
             _state: core::marker::PhantomData,
         })
     }

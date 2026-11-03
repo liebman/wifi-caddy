@@ -8,6 +8,9 @@ pub mod config_ui;
 mod dhcp;
 #[cfg(feature = "captive")]
 mod dns;
+pub mod firmware;
+#[cfg(feature = "firmware-update")]
+pub mod firmware_http;
 pub mod responses;
 
 use core::net::{Ipv4Addr, SocketAddr, SocketAddrV4};

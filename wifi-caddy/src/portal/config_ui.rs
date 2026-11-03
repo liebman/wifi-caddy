@@ -7,6 +7,8 @@
 use core::fmt::{Debug, Display};
 
 use crate::config_storage::{ConfigChangedSet, ConfigStorage, ConfigType};
+#[cfg(feature = "firmware-update")]
+use edge_http::Method;
 use edge_http::io::Error;
 use edge_http::io::server::Connection;
 use edge_nal::TcpSplit;
@@ -17,6 +19,9 @@ use embedded_io_async::{ErrorType, Read, Write};
 
 use super::config_group::{ConfigGroupResult, ConfigQuery, handle_config_group};
 use super::config_page::serve_config_page;
+use super::firmware::FirmwareSink;
+#[cfg(feature = "firmware-update")]
+use super::firmware_http::{run_upload, serve_page};
 use super::responses::{send_json, send_text};
 
 /// Buffer size for JSON config-group responses.
@@ -27,17 +32,26 @@ const CONFIG_GROUP_JSON_BUF_SIZE: usize = 384;
 
 /// HTTP request handler for the config UI.
 ///
-/// Implements `edge_http::io::server::Handler` with manual routing for three endpoints:
+/// Implements `edge_http::io::server::Handler` with manual routing for these
+/// endpoints:
 /// - `GET /` -- config page (single static HTML string)
 /// - `GET /config-group/<group>` -- config group JSON get/set via `?set=...`
 /// - `GET /config/<field>` -- single field get/set via `?set=...`
+/// - `GET /firmware`, `POST /firmware` -- firmware update page and upload (only
+///   with the `firmware-update` feature; the upload goes to [`FirmwareSink`])
 ///
 /// ## Lock ordering
 ///
 /// When both `config` and `io` mutexes need to be held, `config` is always
 /// locked first, then `io` inside the `config` guard. Future code must
-/// preserve this order to prevent deadlocks.
-pub struct ConfigHandler<R: RawMutex + 'static, C: ConfigType + 'static, S: 'static> {
+/// preserve this order to prevent deadlocks. The firmware upload takes only the
+/// `io` lock, so it cannot participate in a cycle.
+pub struct ConfigHandler<
+    R: RawMutex + 'static,
+    C: ConfigType + 'static,
+    S: 'static,
+    F: FirmwareSink<S> = (),
+> {
     /// Shared config mutex (read for GET, locked+mutated for SET).
     pub(crate) config: &'static Mutex<R, C>,
     /// Shared storage mutex (used to persist after SET).
@@ -47,15 +61,25 @@ pub struct ConfigHandler<R: RawMutex + 'static, C: ConfigType + 'static, S: 'sta
     /// Whether to serve captive-portal redirects on this handler.
     #[cfg(feature = "captive")]
     pub(crate) captive: bool,
+    /// Consumes uploaded firmware images; `()` when the application has no
+    /// update support.
+    ///
+    /// Only the `firmware-update` routes read it, so a build without them would
+    /// otherwise report the field as dead.
+    #[cfg_attr(not(feature = "firmware-update"), allow(dead_code))]
+    pub(crate) firmware: F,
 }
 
-impl<R: RawMutex + 'static, C: ConfigType + 'static, S: 'static> ConfigHandler<R, C, S> {
+impl<R: RawMutex + 'static, C: ConfigType + 'static, S: 'static, F: FirmwareSink<S>>
+    ConfigHandler<R, C, S, F>
+{
     /// Create a new config handler.
     pub fn new(
         config: &'static Mutex<R, C>,
         io: &'static Mutex<R, S>,
         notify: DynamicSender<'static, C::ChangedSet>,
         #[cfg(feature = "captive")] captive: bool,
+        firmware: F,
     ) -> Self {
         Self {
             config,
@@ -63,6 +87,7 @@ impl<R: RawMutex + 'static, C: ConfigType + 'static, S: 'static> ConfigHandler<R
             notify,
             #[cfg(feature = "captive")]
             captive,
+            firmware,
         }
     }
 }
@@ -120,11 +145,12 @@ fn path_only(full: &str) -> &str {
     full.split_once('?').map_or(full, |(p, _)| p)
 }
 
-impl<R, C, S> edge_http::io::server::Handler for ConfigHandler<R, C, S>
+impl<R, C, S, F> edge_http::io::server::Handler for ConfigHandler<R, C, S, F>
 where
     R: RawMutex + 'static,
     C: ConfigType + Send,
     S: ConfigStorage + Send,
+    F: FirmwareSink<S>,
 {
     type Error<E: Debug> = Error<E>;
 
@@ -138,6 +164,10 @@ where
     {
         let headers = conn.headers()?;
         let full_path = headers.path;
+        // `Method` is `Copy` and the path borrows the request buffer rather than
+        // the connection, so both outlive the shared borrow that `headers` holds.
+        #[cfg(feature = "firmware-update")]
+        let method = headers.method;
         debug!(
             "http[{}]: {} {}",
             crate::fmt::DisplayFmt(&task_id),
@@ -156,6 +186,12 @@ where
 
         match path {
             "/" => serve_config_page::<C, T, N>(conn).await,
+            #[cfg(feature = "firmware-update")]
+            "/firmware" => match method {
+                Method::Get => serve_page(conn).await,
+                Method::Post => run_upload(conn, self.io, &self.firmware).await,
+                _ => send_text(conn, 405, "Method Not Allowed").await,
+            },
             p if p.starts_with("/config-group/") => {
                 let group = &p["/config-group/".len()..];
                 self.handle_config_group(conn, group, full_path).await
@@ -169,11 +205,12 @@ where
     }
 }
 
-impl<R, C, S> ConfigHandler<R, C, S>
+impl<R, C, S, F> ConfigHandler<R, C, S, F>
 where
     R: RawMutex + 'static,
     C: ConfigType + Send,
     S: ConfigStorage + Send,
+    F: FirmwareSink<S>,
 {
     async fn handle_config_group<T, const N: usize>(
         &self,

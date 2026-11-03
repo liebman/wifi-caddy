@@ -8,6 +8,8 @@ use esp_hal::flash::Flash;
 use wifi_caddy::config_storage::ConfigError;
 use wifi_caddy::config_storage::ConfigServer;
 
+#[cfg(feature = "firmware-update")]
+use crate::ota::Upload as OtaUpload;
 use crate::storage::{FlashConfigStorage, Mounted};
 
 /// Mount flash storage and load the config from the given partition range.
@@ -60,10 +62,18 @@ async fn mount_entry<C: ConfigServer>(
     flash: &'static mut Flash<'static, Blocking>,
     entry: partitions::PartitionEntry,
 ) -> Result<(C, FlashConfigStorage<'static, Mounted>), wifi_caddy::Error> {
-    let region = entry
-        .as_flash_region(flash)
-        .map_err(|_| ConfigError::Backend)?;
-    let storage = FlashConfigStorage::new(region);
+    // The staging buffer of a firmware update stays out of the storage so the
+    // storage stays small enough to move through `main` without a large stack
+    // frame. Mounting happens once per program, so the cell is initialized once.
+    #[cfg(feature = "firmware-update")]
+    static UPLOAD: static_cell::StaticCell<OtaUpload> = static_cell::StaticCell::new();
+
+    let storage = FlashConfigStorage::new(
+        flash,
+        entry,
+        #[cfg(feature = "firmware-update")]
+        UPLOAD.init(OtaUpload::new()),
+    );
     let mut storage = storage.mount(&C::storage_params()).await?;
     let config = C::load_from(&mut storage).await?;
     Ok((config, storage))

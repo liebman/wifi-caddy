@@ -23,6 +23,9 @@ defmt = [
 log = ["dep:log", "edge-http/log"]
 captive = ["dep:edge-captive"]
 debug-server = []
+# `/firmware` upload endpoint and page in the config portal. The application
+# installs a `FirmwareSink`; without this feature the endpoint does not exist.
+firmware-update = []
 
 [dependencies]
 embassy-sync = { version = "0.8" }
