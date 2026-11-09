@@ -278,10 +278,28 @@ These are used directly in application code:
 | Item | Description |
 |------|-------------|
 | `ConfigHandle<C>` | Type alias for `&'static Mutex<CriticalSectionRawMutex, C>`, returned by `wifi_init!` |
+| `StorageHandle` | Type alias for the shared `FlashConfigStorage` mutex, returned as the 5th tuple element by `wifi_init_with_storage!` |
 | `ConfigError` | Error type from `init_wifi` (e.g. backend, invalid data) |
 | `config_storage::ConfigStorage` | Trait to implement an alternative storage backend |
 | `config_storage::ConfigValue` | Trait to implement for custom field types in your config struct (serialization + getter) |
 | `config_storage::MAX_VALUE_SIZE` | Max bytes per stored value (used by `ConfigStorage` default impls) |
+
+`wifi_init_with_storage!` takes the same arguments as `wifi_init!` and returns the
+storage handle as one more tuple element. An application that changes the
+configuration itself — from a network service, say — uses it to persist the change
+through the same lock the portal takes:
+
+```rust,ignore
+let (stacks, sender, config, config_rx, storage) =
+    esp_wifi_caddy::wifi_init_with_storage!(AppConfig, spawner, wifi, flash, "config")?;
+
+let mut cfg = config.lock().await;
+if let Ok(Some(changed)) = ConfigApi::set_field(&mut *cfg, "brightness", "128") {
+    if !changed.is_empty() {
+        cfg.store_to(&mut *storage.lock().await).await?;
+    }
+}
+```
 
 ## Memory footprint
 

@@ -151,6 +151,18 @@ pub type WifiPass = heapless::String<MAX_PASS_LEN>;
 /// AP SSID prefix type
 pub type WifiApSsidPrefix = heapless::String<MAX_AP_SSID_PREFIX_LEN>;
 
+/// The shared configuration storage, as returned by [`wifi_init_with_storage!`].
+///
+/// The portal and the application then reach the flash driver through one
+/// handle, so a configuration write from either side takes the same lock. A
+/// configuration value is changed by locking the config, calling
+/// [`config_storage::ConfigApi::set_field`], and persisting with
+/// [`config_storage::ConfigLoadStore::store_to`] against this handle.
+pub type StorageHandle = &'static embassy_sync::mutex::Mutex<
+    CriticalSectionRawMutex,
+    FlashConfigStorage<'static, Mounted>,
+>;
+
 /// Command to control WiFi caddy (all configuration is via commands).
 #[derive(Clone)]
 pub enum WifiCaddyCommand {
@@ -629,6 +641,54 @@ macro_rules! wifi_init {
         match $crate::mount_and_load_by_partition::<$Config>($flash, $partition).await {
             Err(e) => Err(e),
             Ok((config, storage)) => {
+                // The storage handle stays private: a caller that wants it uses
+                // `wifi_init_with_storage!`.
+                match $crate::_wifi_init_body!($Config, $spawner, $wifi, config, storage, $Firmware) {
+                    Ok((stacks, commands, config, config_rx, _storage)) => {
+                        Ok((stacks, commands, config, config_rx))
+                    }
+                    Err(e) => Err(e),
+                }
+            }
+        }
+    }};
+}
+
+/// Like [`wifi_init!`], but also returns the shared configuration storage.
+///
+/// The extra tuple element is the [`StorageHandle`] the portal already uses, so
+/// the application can persist a configuration change of its own without a
+/// second flash driver: lock the config, apply the change with
+/// [`config_storage::ConfigApi::set_field`], then lock the storage and call
+/// [`config_storage::ConfigLoadStore::store_to`]. Holding the same lock as the
+/// portal serialises the two writers.
+///
+/// # Single-invocation limit
+///
+/// See [`wifi_init!`] — the same one-call-per-crate constraint applies here.
+///
+/// # Usage
+///
+/// ```ignore
+/// let (stacks, sender, handle, config_rx, storage) =
+///     esp_wifi_caddy::wifi_init_with_storage!(AppConfig, spawner, peripherals.WIFI, flash, "config")?;
+/// ```
+#[macro_export]
+macro_rules! wifi_init_with_storage {
+    ($Config:ty, $spawner:expr, $wifi:expr, $flash:expr, $partition:expr) => {{
+        $crate::wifi_init_with_storage!(
+            $Config,
+            $spawner,
+            $wifi,
+            $flash,
+            $partition,
+            firmware: ()
+        )
+    }};
+    ($Config:ty, $spawner:expr, $wifi:expr, $flash:expr, $partition:expr, firmware: $Firmware:ty) => {{
+        match $crate::mount_and_load_by_partition::<$Config>($flash, $partition).await {
+            Err(e) => Err(e),
+            Ok((config, storage)) => {
                 $crate::_wifi_init_body!($Config, $spawner, $wifi, config, storage, $Firmware)
             }
         }
@@ -670,7 +730,14 @@ macro_rules! wifi_init_raw {
         match $crate::mount_and_load::<$Config>($flash, $range).await {
             Err(e) => Err(e),
             Ok((config, storage)) => {
-                $crate::_wifi_init_body!($Config, $spawner, $wifi, config, storage, $Firmware)
+                // The storage handle stays private: a caller that wants it uses
+                // `wifi_init_with_storage!`.
+                match $crate::_wifi_init_body!($Config, $spawner, $wifi, config, storage, $Firmware) {
+                    Ok((stacks, commands, config, config_rx, _storage)) => {
+                        Ok((stacks, commands, config, config_rx))
+                    }
+                    Err(e) => Err(e),
+                }
             }
         }
     }};
@@ -679,6 +746,10 @@ macro_rules! wifi_init_raw {
 // ---------------------------------------------------------------------------
 // Shared init body: static allocation + worker spawn + wifi_init_inner call.
 // Factored out of wifi_init!/wifi_init_raw! so neither duplicates this logic.
+//
+// Expands to the `wifi_init_inner` result, whose tuple carries the storage
+// handle as its 4th element: the `wifi_init!` expansions drop it again, and
+// `wifi_init_with_storage!` returns it unchanged.
 // ---------------------------------------------------------------------------
 
 #[doc(hidden)]

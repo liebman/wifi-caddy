@@ -16,7 +16,7 @@ pub async fn wifi_init_inner<C, R, F>(
     spawner: Spawner,
     wifi: WIFI<'static>,
     config_mutex: &'static Mutex<CriticalSectionRawMutex, C>,
-    io_mutex: &'static Mutex<CriticalSectionRawMutex, FlashConfigStorage<'static, Mounted>>,
+    io_mutex: crate::StorageHandle,
     config_rx: R,
     notify: DynamicSender<'static, C::ChangedSet>,
     spawn_workers: F,
@@ -26,6 +26,10 @@ pub async fn wifi_init_inner<C, R, F>(
         WifiCommandSender,
         &'static Mutex<CriticalSectionRawMutex, C>,
         R,
+        // The storage handle is returned so a caller that wants to persist a
+        // configuration change of its own can reach the same flash driver the
+        // portal uses. `wifi_init!` drops it; `wifi_init_with_storage!` keeps it.
+        crate::StorageHandle,
     ),
     wifi_caddy::Error,
 >
@@ -49,5 +53,5 @@ where
         spawn_workers(s, ap_stack, sta_stack, config_mutex, io_mutex, notify)
     })?;
 
-    Ok((wifi_stacks, wifi_sender, config_mutex, config_rx))
+    Ok((wifi_stacks, wifi_sender, config_mutex, config_rx, io_mutex))
 }
