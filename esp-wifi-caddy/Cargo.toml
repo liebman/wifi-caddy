@@ -184,10 +184,10 @@ esp-bootloader-esp-idf = { version = "0.6.0", default-features = false, features
 # esp-radio = { path = "../esp-hal/esp-radio" }
 # esp-rtos = { path = "../esp-hal/esp-rtos" }
 
-esp-alloc = { git = "https://github.com/esp-rs/esp-hal", rev = "5c0820cf9e2be0a49719bd71c30e7a45cae48134" }
-esp-backtrace = { git = "https://github.com/esp-rs/esp-hal", rev = "5c0820cf9e2be0a49719bd71c30e7a45cae48134" }
-esp-bootloader-esp-idf = { git = "https://github.com/esp-rs/esp-hal", rev = "5c0820cf9e2be0a49719bd71c30e7a45cae48134" }
-esp-hal = { git = "https://github.com/esp-rs/esp-hal", rev = "5c0820cf9e2be0a49719bd71c30e7a45cae48134" }
-esp-println = { git = "https://github.com/esp-rs/esp-hal", rev = "5c0820cf9e2be0a49719bd71c30e7a45cae48134" }
-esp-radio = { git = "https://github.com/esp-rs/esp-hal", rev = "5c0820cf9e2be0a49719bd71c30e7a45cae48134" }
-esp-rtos = { git = "https://github.com/esp-rs/esp-hal", rev = "5c0820cf9e2be0a49719bd71c30e7a45cae48134" }
+esp-alloc = { git = "https://github.com/esp-rs/esp-hal", rev = "e66a3f721e0049d9ce0338e1f7c526e377251e72" }
+esp-backtrace = { git = "https://github.com/esp-rs/esp-hal", rev = "e66a3f721e0049d9ce0338e1f7c526e377251e72" }
+esp-bootloader-esp-idf = { git = "https://github.com/esp-rs/esp-hal", rev = "e66a3f721e0049d9ce0338e1f7c526e377251e72" }
+esp-hal = { git = "https://github.com/esp-rs/esp-hal", rev = "e66a3f721e0049d9ce0338e1f7c526e377251e72" }
+esp-println = { git = "https://github.com/esp-rs/esp-hal", rev = "e66a3f721e0049d9ce0338e1f7c526e377251e72" }
+esp-radio = { git = "https://github.com/esp-rs/esp-hal", rev = "e66a3f721e0049d9ce0338e1f7c526e377251e72" }
+esp-rtos = { git = "https://github.com/esp-rs/esp-hal", rev = "e66a3f721e0049d9ce0338e1f7c526e377251e72" }
